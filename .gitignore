@@ -1,0 +1,21 @@
+# Private environment and machine-only evidence
+.local/
+.env
+.env.*
+*.log
+*.pak
+*.utoc
+*.ucas
+*.uasset
+*.umap
+*.dll
+*.exe
+UHTHeaderDump/
+Saved/
+__pycache__/
+.vs/
+.idea/
+# Build outputs and local scratch
+build/
+dist/
+.cache/
