@@ -23,3 +23,46 @@
 **Завершить** исследование, когда станет возможно выбрать один минимальный способ (или доказательно отклонить его) и выставить reviewable engineering gate `READY/BLOCKED` перед первой production-мутацией. Общие подтверждённые игровые факты сохранить в Asterigos-Research, специфический план реализации — в этом репозитории. Не добавлять дорогостоящую инфраструктуру или код только ради возможности что-либо протестировать.
 
 **Отдельная, не обязательная ветвь:** локальная тревога групп врагов; не смешивать с первым ресурсным прототипом.
+
+## Итоги самостоятельного внешнего этапа — 2026-11-05
+
+**Статус:** завершён обзор уже принятого Research, официального контракта UE4SS и внешних сведений о развитии посоха. Это **не** статическое исследование установленных игровых файлов и **не** runtime-проверка StaffRebalance. Ранее установленный Steam 1.09 / build 12996889 + UE4.27 + UE4SS `83330635` — контекст среды других модов, а не доказательство нужного combat hook.
+
+### Опорные доказательства и уровень уверенности
+
+1. **Доказано на прежнем проектном baseline:** [Asterigos-Research R-008](https://github.com/NikichMods/Asterigos-Research/blob/main/docs/VERIFIED_RUNTIME.md#r-008--ue4ss-callback-boundaries-for-observation-2026-10-28) исследовал точный исходник UE4SS `83330635`: Lua `RegisterHook` для script/Blueprint функций исполняет callback **после** script execution; native путь имеет иной pre/post контракт. Само существование UFunction не доказывает, что callback можно использовать как pre-damage writer. Документация: https://docs.ue4ss.com/lua-api/global-functions/registerhook.html.
+2. **Доказано лишь для соседней задачи:** [R-014](https://github.com/NikichMods/Asterigos-Research/blob/main/docs/VERIFIED_RUNTIME.md#r-014--native-actionmapping-contracts-and-skill-topology-static-2026-10-29) установил часть action/input-маршрута и имён (`GenesisPlayerController.NotifyActionInput`, `OnActionInputPressed/Released`). Факт регистрации hook и нажатия не доказывает фактическое исполнение staff-атаки: в одном наблюдении `NotifyActionInput` дал 0 semantic callbacks. Поэтому input polling/Raw KeyPressed нельзя считать каноническим моментом списания.
+3. **Доказано лишь для чтения HP Хильды:** [R-004](https://github.com/NikichMods/Asterigos-Research/blob/main/docs/VERIFIED_RUNTIME.md#r-004--нативное-чтение-hp-и-startup-owning-pawn-через-ue4ss) показал `GameGlobal.GetHP/GetMaxHP` для player pawn; он **не** определяет final combat damage writer или классы врагов. Нельзя из этого делать «вернём врагу HP после удара».
+4. **Внешние механические сведения, не runtime:** [инвентаризация](https://github.com/NikichMods/Asterigos-Research/blob/main/docs/COMBAT_SYSTEM_EXTERNAL_INVENTORY.md), [Staff Wiki](https://asterigos.fandom.com/wiki/Staff), [Weapons Wiki](https://asterigos.fandom.com/wiki/Category:Weapons), [Steam о weapon/Enchantite upgrades](https://steamcommunity.com/app/1731070/discussions/0/3766731192698358679/). Нужна проверка в Steam 1.09. В UE4.27 есть generic/point/radial damage events с Damage Causer, но **использование Asterigos именно этой схемы не установлено**: https://dev.epicgames.com/documentation/unreal-engine/blueprint-events?application_version=4.27.
+
+### Прокачка и матрица обязательных вариантов
+
+| Класс изменений в игре | Что предварительно описано | Следствие для StaffRebalance / что проверить |
+| --- | --- | --- |
+| Weapon upgrades, Enchantite и повышение характеристик | Урон оружия, стихий и часть навыков растёт | Не ставить фиксированный слабый damage. Проверить масштабирование относительно **штатного рассчитанного combat HP damage**, уже учитывающего прогрессию |
+| Обычное комбо и четыре стихии | Первые три действия; у Astral/Thunder 1/2/3 projectile, у Fire AoE, Ice AoE/DoT, Thunder chain | Один charge на **выполненное действие**, а не на projectile/hit/tick; все дочерние эффекты наследуют один режим |
+| Fourth Quadrant и Staff Mastery | Четвёртый шаг, несколько снарядов и отложенный Fire/Thunder, длительный Ice | Не опираться на номер input или текущее состояние запасов в момент delayed hit; проверить срок и происхождение дочерних источников |
+| Judgement | Внешнее описание говорит о превращении атак посоха в вариант Fourth Quadrant | Проверить: **один input остаётся одной атакой**, даже если заменяется схема выстрела; не принимать существование/семантику таланта без игры |
+| Charged Rays; Focusing/Rapid Fire, Drain/Life Rays | Отдельное прицеливание/выстрел; charging, уменьшенный интервал выстрелов, SP/AP-модификаторы | Списание при реальном выстреле, не aim/hold. Не менять SP/AP и перки; отдельные выстрелы Rapid Fire могут считаться отдельно |
+| Chain Effect, Magic Breath, Energy Affinity, Magical Explosion | Особые изменения типа и коэффициента staff-атаки | Выяснить владельца и источник. Решение о включении этих специальных действий в правило расхода заряда **пока открыто**, не подменять предположением |
+| Weapon-switch blast, доступные навыки независимо от экипировки | Переключение может атаковать; active skills могут быть привязаны к оружию без его экипировки | Не определять происхождение урона исключительно по активному оружию; выбор расхода для switch/skill требует отдельной явной границы |
+
+### Trade study: варианты механизма, без преждевременного выбора
+
+- **Глобальное изменение Attack или статов посоха** — не предпочтительно: трудно привязать к одной атаке, к её delayed effects и отделить другие навыки/взаимодействия мира.
+- **Привязка strong/weak к созданным projectile/attack-source**, затем модификация доступного им damage-поля — перспективная гипотеза, если источник и field доступны до расчёта; проверить, не используется ли поле также для объектов мира, AP и control.
+- **Привязка режима к attack instance и избирательная коррекция только combat HP-damage на final consumer** — перспективная гипотеза при наличии достоверного origin/causer и pre-commit seam. Нужна проверка итогового масштаба, очередности, multi-target, DoT и child ownership.
+- **Компенсация потерь HP после применения** — отклонить как вариант по умолчанию: возможны death/kill/stat/AP/aggro и иные побочные события уже произошедшего damage; нет доказательства безопасной компенсации.
+- **Только pak/DataTable** — нет доказанного динамического разделения strong/weak, charge-ресурса и чистого world-object split; не принимать как готовый путь.
+
+**Предварительный архитектурный критерий:** если charge есть при фактическом commit атаки, сохранить strong/weak **один раз** в принадлежащем этой атаке состоянии, и применять его ко всем исходящим combat HP-damage последствиям. Коэффициент ослабления — параметр, а не фиксированное значение урона. Не интерпретировать эту схему как доказанный доступный API.
+
+### Следующий минимальный исследовательский шаг (сначала static, без запуска игры)
+
+1. В сохранённых **локальных** metadata/UHT/CUE4Parse Steam 1.09 определить точные объекты/пути исполнителя трёх базовых staff-действий и Charged Rays, потенциальный commit выполнения, количество порождённых source actors и привязку к parent attack. Проверить Fourth Quadrant/Judgement, если сведения доступны без нового большого дампа.
+2. Проследить на конкретном варианте **final writer combat HP** и его вызовы, выяснить возможность отличить enemy health от destructible world health, применение resistances/upgrade bonuses, связь DoT/chain и последствий.
+3. Установить владельца подтверждённой melee-атаки и единственного зачёта для multi-hit; owner успешного Conduit **rest**, отличного от menu/open/teleport.
+4. Для неизвестного фиксировать `not found/not inspected`, точный просмотренный источник/версию и минимально необходимый runtime вопрос. Ничего не писать в игру или её сохранения. **Только если прямой static inspection не закрывает существенный пробел**, подготовить один ограниченный read-only runtime probe по правилам DevRules.
+5. Только после evidence владельца, final writer, blast radius, preserved invariants и acceptance теста проставить production READY. На этом этапе **BLOCKED**.
+
+Отдельная проработка save/load/death не выводится из «сохранить заряды между столкновениями». Не внедрять внешнее хранение save state, глобальные hooks или боевой HUD без доказанного запроса/механизма.
