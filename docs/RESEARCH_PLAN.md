@@ -2,6 +2,8 @@
 
 **Режим:** research-only до доказательства owner/commit point и финального потребителя урона. Никаких production-патчей, установочных сборок, версий и глобального runtime-hook наугад.
 
+**Текущее состояние 2026-11-05:** внешний обзор и первый локальный статический этап завершены. Результаты и шесть полей production gate: [Static Combat Research 01](STATIC_COMBAT_RESEARCH_01.md); следующий шаг — [ТЗ read-only наблюдения](RUNTIME_OBSERVATION_TASK_01.md), без реализации observer в текущем этапе. Разделы ниже сохраняют исходный план и историю внешнего обзора; новый полный UHT dump или повтор того же static inspection не требуется. Gate остаётся **BLOCKED**.
+
 ## Источники прежде новых экспериментов
 
 1. DevRules: `WORKING_RULES.md`, `ENGINEERING_RULES.md`, `CODEX_WORKFLOW.md`, `GIT_WORKFLOW.md`, при интеграции с игрой — `RUNTIME_INTEGRATION.md`, при runtime-зондах — `RUNTIME_TEST_HARNESS.md`.

@@ -1,0 +1,405 @@
+{
+  "date": "2026-11-05",
+  "evidence_level": "static declarations/cooked rows/Blueprint bytecode; no StaffRebalance runtime execution",
+  "baseline": {
+    "steam_app": 1731070,
+    "steam_buildid": 12996889,
+    "steam_depot": 1731071,
+    "steam_manifest": "4552465433899076789",
+    "ue": "4.27",
+    "ue4ss_revision": "83330635",
+    "installed_ue4ss_dll_sha256": "ce5e3c46a920cc00b2817ac61e438c9162830290379d0b5b9c4dfc2b29459290"
+  },
+  "reader": {
+    "library": "CUE4Parse 1.2.2",
+    "ReadScriptData": true,
+    "game": "GAME_UE4_27",
+    "scope": "top-level installed Paks; existing reader reused, no new dumper or runtime",
+    "Program.cs_sha256": "00230d82dcd0362eebfad63aff4bf8b6339771fc2b4dd21e133e33f3ec99a47a",
+    "reader.dll_sha256": "6034fe854b7f1cb457b663b4aa43ea5cc393c7941362f123156c1701024cc26f"
+  },
+  "sources": [
+    {
+      "kind": "retained-UHT-declaration",
+      "source": "UHTHeaderDump/Genesis/Public/BaseProjectile.h",
+      "sha256": "6edb1be13c25d7b4998976468fa2f2bf74b42fa637e146928529e5df69747a55"
+    },
+    {
+      "kind": "retained-UHT-declaration",
+      "source": "UHTHeaderDump/Genesis/Public/BaseGameObject.h",
+      "sha256": "b22d3504b467924d66abdf26b6a3fdc77979c3c112157d44f9d9a39c20e8b872"
+    },
+    {
+      "kind": "retained-UHT-declaration",
+      "source": "UHTHeaderDump/Genesis/Public/GenesisCharacter.h",
+      "sha256": "fa780f90b92fde03b9956b3a00ba241f87cd2039d3f9d77c78253fe988ce15b2"
+    },
+    {
+      "kind": "retained-UHT-declaration",
+      "source": "UHTHeaderDump/Genesis/Public/GameGlobal.h",
+      "sha256": "a6d1b5c0828e0bcc188f05fa8e29e5e58d618c08731d4bc9fd0ba8b3c4925023"
+    },
+    {
+      "kind": "retained-UHT-declaration",
+      "source": "UHTHeaderDump/Genesis/Public/SpawnProjectileParam.h",
+      "sha256": "667a3f68f23d5abef5e7be92a18bc7c550430e1e0a4c96b126cbb0efcfe53cbb"
+    },
+    {
+      "kind": "retained-UHT-declaration",
+      "source": "UHTHeaderDump/Genesis/Public/SpawnProjectileEXParam_Hit.h",
+      "sha256": "7529131562c7c2934e3e98d0045d0851fda5eda0a65699b08984e22492d82a58"
+    },
+    {
+      "kind": "retained-UHT-declaration",
+      "source": "UHTHeaderDump/Genesis/Public/SkillData.h",
+      "sha256": "7540195414a5ddd4dea5ee2efc87685c6c9ce825aed682ef8117f4209a17ee78"
+    },
+    {
+      "kind": "retained-UHT-declaration",
+      "source": "UHTHeaderDump/Genesis/Public/SkillTimelineData.h",
+      "sha256": "0ed492bb218c70f6c5013068d1b42f9a4d7defc17525051e043688e5df4ba5e2"
+    },
+    {
+      "kind": "retained-UHT-declaration",
+      "source": "UHTHeaderDump/Genesis/Public/GenesisSkillComponent.h",
+      "sha256": "42560d318e0f3df3d7cf4c481d570eb191cda3ca1cf9c305918e2160a8a07c53"
+    },
+    {
+      "kind": "retained-UHT-declaration",
+      "source": "UHTHeaderDump/Genesis/Public/PlayerSkillComponent.h",
+      "sha256": "8c3ee6b8c83fabd56fbec6f92dd58cafc0636641a03ce9c5b37f146a4ff39528"
+    },
+    {
+      "kind": "retained-UHT-declaration",
+      "source": "UHTHeaderDump/Genesis/Public/CharacterAttributeComponent.h",
+      "sha256": "1156646351b94ff227f18be0fb712d80fc8644f9b0c6688cda2bdfcc38114da2"
+    },
+    {
+      "kind": "retained-UHT-declaration",
+      "source": "UHTHeaderDump/Genesis/Public/SceneObjectAttributeComponent.h",
+      "sha256": "f5d746a45ae970343f7e31a2af5ff266ae2a1913fdf305f70b8c5d43ad21d747"
+    },
+    {
+      "kind": "retained-UHT-declaration",
+      "source": "UHTHeaderDump/Genesis/Public/ProjectileData.h",
+      "sha256": "e8d28a1b6beec6e394ca1f19096aa6e92c05c61ac4f42078a371c8dbebe009e1"
+    },
+    {
+      "kind": "retained-UHT-declaration",
+      "source": "UHTHeaderDump/Genesis/Public/DamageAttributeData.h",
+      "sha256": "a9935b800963fb6f34455aa49b1c42a2297c98918defa8b0c2ecd6cd94d57cb6"
+    },
+    {
+      "kind": "retained-UHT-declaration",
+      "source": "UHTHeaderDump/Genesis/Public/ExtendedCoherentUIGTGameHUD.h",
+      "sha256": "0b4ef742737119088eef9d4c918f397889377ca314ae6c96e057533849edd359"
+    },
+    {
+      "kind": "retained-UHT-declaration",
+      "source": "UHTHeaderDump/Genesis/Public/EStatusFunction.h",
+      "sha256": "5af27e71081185753f9c5f4562c36e477223f47e471b9929aaa619d7996496e6"
+    },
+    {
+      "kind": "retained-UHT-declaration",
+      "source": "UHTHeaderDump/Genesis/Public/WeaponData.h",
+      "sha256": "0b4678a46bcf6e35ca6b1ec23f619d505ccd4d5ad5891fc85a25d0377492700b"
+    },
+    {
+      "kind": "cooked-export",
+      "source": "BaseBoxProjectile_BP.json (CUE4Parse export)",
+      "sha256": "e7db8895008af4e2faba655d39c4b135dd33c87e4742bf902807d78879b313cd",
+      "bytes": 13405
+    },
+    {
+      "kind": "cooked-export",
+      "source": "BaseCharacter_BP.json (CUE4Parse export)",
+      "sha256": "74d61127a7ecc1d7cf9c84d97d52f429444a43c6f11ff68b7d91869d1302cc60",
+      "bytes": 120140
+    },
+    {
+      "kind": "cooked-export",
+      "source": "BasePlayerCharacter_BP.json (CUE4Parse export)",
+      "sha256": "57201275a283519c94daf668f57e84cf731f7939efa19f0f450df11de23fefdd",
+      "bytes": 404355
+    },
+    {
+      "kind": "cooked-export",
+      "source": "BaseProjectile_BP.json (CUE4Parse export)",
+      "sha256": "38005205f7e305c56f1345ee478af30b2955d94bd012c0a75e5852e51eaf821c",
+      "bytes": 16014
+    },
+    {
+      "kind": "cooked-export",
+      "source": "BaseSavePoint_BP.json (CUE4Parse export)",
+      "sha256": "19a4081ef02df7324def0f73cc6441784d601173489e39f03a847c37e952d4d0",
+      "bytes": 599664
+    },
+    {
+      "kind": "cooked-export",
+      "source": "BaseSphereProjectile_BP.json (CUE4Parse export)",
+      "sha256": "66f16097ce27f06287cc01f2d61ba6972ffbce63410f10dca6d197f55118bbf7",
+      "bytes": 13627
+    },
+    {
+      "kind": "cooked-export",
+      "source": "ComboSkillData.json (CUE4Parse export)",
+      "sha256": "19eddfed34c1d9d796bfe118c7c889e861e39726ec3e77eb8869eec863304b27",
+      "bytes": 1000
+    },
+    {
+      "kind": "cooked-export",
+      "source": "EnhanceCrystalLv.json (CUE4Parse export)",
+      "sha256": "cb1c91872dc8e49c55f28c2d8636e2522acf1bbce7a9d53b98ba92b7b75aaed9",
+      "bytes": 10427
+    },
+    {
+      "kind": "cooked-export",
+      "source": "GameGlobalBlueprintLibrary.json (CUE4Parse export)",
+      "sha256": "c3e465cc2486ebeef05fc36cd5f4d14f816689394654b71c2832cf3fc7b94801",
+      "bytes": 671763
+    },
+    {
+      "kind": "cooked-export",
+      "source": "hilda_staff_arrow.json (CUE4Parse export)",
+      "sha256": "97f6d708cb3c1f96ebea076e8fd02a1be76f4f077b90891f68916eb83a2d870b",
+      "bytes": 283412
+    },
+    {
+      "kind": "cooked-export",
+      "source": "hilda_staff_arrow_damage.json (CUE4Parse export)",
+      "sha256": "667172c8d562d363a046b3f805d37fe6f66780e1c7e48a06eedcaec5894bafab",
+      "bytes": 125751
+    },
+    {
+      "kind": "cooked-export",
+      "source": "hilda_staff_atk4_astral_hit.json (CUE4Parse export)",
+      "sha256": "ca7191ce3de76d01eac01ddfe2f702ecfde7e726782640b8e132c89532825652",
+      "bytes": 139058
+    },
+    {
+      "kind": "cooked-export",
+      "source": "hilda_staff_atk4_fire_beam.json (CUE4Parse export)",
+      "sha256": "da89531bf374af34bdcfb177173614b371afde7fbc87879b9c4ae11204a2afe2",
+      "bytes": 130092
+    },
+    {
+      "kind": "cooked-export",
+      "source": "hilda_staff_atk4_fire_main.json (CUE4Parse export)",
+      "sha256": "6a120d7906f65d9f0fcd0ac9b948899534438674668a5ca3e244b1fb957458be",
+      "bytes": 45425
+    },
+    {
+      "kind": "cooked-export",
+      "source": "hilda_staff_atk4_fire_tele.json (CUE4Parse export)",
+      "sha256": "7f1683cdb8eabf975224567d2903de30c6a087c83282b80b5b07316a81d814d5",
+      "bytes": 144436
+    },
+    {
+      "kind": "cooked-export",
+      "source": "hilda_staff_atk4_ice_beam.json (CUE4Parse export)",
+      "sha256": "2d15cf9273ecc3a5e55cdecc6960a4094a8a031e32a532dc0b223dbf20eae944",
+      "bytes": 190307
+    },
+    {
+      "kind": "cooked-export",
+      "source": "hilda_staff_atk4_ice_main.json (CUE4Parse export)",
+      "sha256": "bc3a1cc6511836183a30742e0b0447e8f3ee3e8fd7a3a2769f30d4aad0d8c33f",
+      "bytes": 108238
+    },
+    {
+      "kind": "cooked-export",
+      "source": "hilda_staff_atk4_thunder_beam.json (CUE4Parse export)",
+      "sha256": "8d27533cf1241dd7dd7d22e47c7a2f78b75a2ad26774d98ca6c6061653b16e14",
+      "bytes": 131218
+    },
+    {
+      "kind": "cooked-export",
+      "source": "hilda_staff_atk4_thunder_main.json (CUE4Parse export)",
+      "sha256": "4949c0b5ba46c0f1ee33a72aaed24dc3ccea6ac4f2ed0e2f0e6d15c6e2e39495",
+      "bytes": 50628
+    },
+    {
+      "kind": "cooked-export",
+      "source": "hilda_staff_bolt_astral.json (CUE4Parse export)",
+      "sha256": "19659b7e9e21a07fb652959ebc8862a1921f46cc801599eb933601d50f7e3a0a",
+      "bytes": 187866
+    },
+    {
+      "kind": "cooked-export",
+      "source": "hilda_staff_bolt_fire.json (CUE4Parse export)",
+      "sha256": "90a57d6457de86ea58db185c849844392fce3cb7bfc5db5d0ec0185f348bdfb1",
+      "bytes": 223085
+    },
+    {
+      "kind": "cooked-export",
+      "source": "hilda_staff_bolt_ice.json (CUE4Parse export)",
+      "sha256": "b6eaae103ba4bd6804509382e925b9e0f19c3b0c74c1d90d8e2b31d4047f2cbe",
+      "bytes": 345192
+    },
+    {
+      "kind": "cooked-export",
+      "source": "hilda_staff_bolt_thunder.json (CUE4Parse export)",
+      "sha256": "ed34982807e51d96b2b27dff0821580041106cfc7e254cf463a81deae22714af",
+      "bytes": 166909
+    },
+    {
+      "kind": "cooked-export",
+      "source": "hilda_staff_breath.json (CUE4Parse export)",
+      "sha256": "fdc8c2a02185aa9c43eba6da065c729cb6a899e1b69162874a52bec0519e0e15",
+      "bytes": 36557
+    },
+    {
+      "kind": "cooked-export",
+      "source": "hilda_staff_frontatk.json (CUE4Parse export)",
+      "sha256": "048de462dc973c6a9f6ab8f453ad67ced06c46dea406755c2897d3294560b123",
+      "bytes": 401457
+    },
+    {
+      "kind": "cooked-export",
+      "source": "hilda_staff_switch_atk.json (CUE4Parse export)",
+      "sha256": "962a50481022977184f839f017cc683c966d04aa92a45337543a3b46cb20eeba",
+      "bytes": 72709
+    },
+    {
+      "kind": "cooked-export",
+      "source": "MainGameInstance_BP.json (CUE4Parse export)",
+      "sha256": "f748b94fb700a65f7be8fc25afd338c4c5e8f31cbb91b227105a4dc5b7b37cff",
+      "bytes": 4415521
+    },
+    {
+      "kind": "cooked-export",
+      "source": "Genesis/Content/Localization/Player/en/Player.locres (parsed JSON)",
+      "sha256": "19a3fd44c8ebcfec402f59df754741867423747086c9bdfc5cb168d9c0876b74",
+      "bytes": 375878
+    },
+    {
+      "kind": "cooked-export",
+      "source": "Projectile_Player.json (CUE4Parse export)",
+      "sha256": "3edb3eae720a25dd7f5f7db5b8df915edf4812e7266a5d2554e2ba70d7e7450a",
+      "bytes": 1458683
+    },
+    {
+      "kind": "cooked-export",
+      "source": "Remapping.json (CUE4Parse export)",
+      "sha256": "2c85ec7c07a5e74dedf283fa28884d93844c8c0833397889736e99bdaea29f67",
+      "bytes": 60606
+    },
+    {
+      "kind": "cooked-export",
+      "source": "SavePoint_BP.json (CUE4Parse export)",
+      "sha256": "7c0e50c8edea957fe40aa3089beb516a9711b3728af4e1fb66c0c94012208a53",
+      "bytes": 529618
+    },
+    {
+      "kind": "cooked-export",
+      "source": "Skill_Player.json (CUE4Parse export)",
+      "sha256": "d72478ee1dfe579970cb8666b58bbdc85da681547330053458f55d8a58a2095f",
+      "bytes": 1167829
+    },
+    {
+      "kind": "cooked-export",
+      "source": "Status_Skill.json (CUE4Parse export)",
+      "sha256": "af5f1cb6b44b2e31c867f86ff1089de8adb4618cad13afafca89bfb8c04d5111",
+      "bytes": 501930
+    },
+    {
+      "kind": "cooked-export",
+      "source": "Status_Talent.json (CUE4Parse export)",
+      "sha256": "3edee51ab83c2acbf8449354de9c0b6cde340f08f7474fc6b122363d73993e0a",
+      "bytes": 157432
+    },
+    {
+      "kind": "cooked-export",
+      "source": "Talent.json (CUE4Parse export)",
+      "sha256": "6d951c474d74ef85df05d88c42ed6405baaef404a98d3ee025cc076071d26fc1",
+      "bytes": 178710
+    },
+    {
+      "kind": "cooked-export",
+      "source": "TimelineData_PlayerSkill.json (CUE4Parse export)",
+      "sha256": "78cb5b9487c27ea3a1428bb7a1a521b875dc1bcd666d561b458536ac82b4610d",
+      "bytes": 1208845
+    },
+    {
+      "kind": "cooked-export",
+      "source": "TimelineData_PlayerSkill_1.json (CUE4Parse export)",
+      "sha256": "726c9be77562d0003d352eed9602efc99174dc38c1af728b90dd82ab2a73be52",
+      "bytes": 1056183
+    },
+    {
+      "kind": "cooked-export",
+      "source": "TimelineData_PlayerSkill_2.json (CUE4Parse export)",
+      "sha256": "416dd562f0032142f4c0dcbe6cf4879a2c0ef288723f2c1e949150fba4d5dc9f",
+      "bytes": 2016955
+    },
+    {
+      "kind": "cooked-export",
+      "source": "TimelineData_Projectile.json (CUE4Parse export)",
+      "sha256": "06e9e66c695bcaa114e2ced3163d942d1998304f28ab4374dcc963cd3a5e18df",
+      "bytes": 801961
+    },
+    {
+      "kind": "cooked-export",
+      "source": "TimelineData_Status.json (CUE4Parse export)",
+      "sha256": "ad664c95c5702ecaa133ed233634b6b1719aafa6217703a17303104159ed033c",
+      "bytes": 234202
+    },
+    {
+      "kind": "cooked-export",
+      "source": "Weapon.json (CUE4Parse export)",
+      "sha256": "1bee912dbedc85834010e4ab1edc7aa99edc0c73ba49ada974d0c31ced9558df",
+      "bytes": 92464
+    },
+    {
+      "kind": "cooked-export",
+      "source": "WeaponTypeInfo.json (CUE4Parse export)",
+      "sha256": "584dcef58a82458a9bc7d79b3e314abcaf9ed732ce3ddb3f91ad9efb6310f5ce",
+      "bytes": 4238
+    },
+    {
+      "kind": "blueprint-bytecode-export",
+      "source": "hilda_staff_arrow--ExecuteUbergraph_hilda_staff_arrow.bytecode.json",
+      "sha256": "7770f3c94412f6ceceabb5cb660907240b6aa9b315a0d127519fed30c9a0d65d"
+    },
+    {
+      "kind": "blueprint-bytecode-export",
+      "source": "hilda_staff_bolt_astral--ExecuteUbergraph_hilda_staff_bolt_astral.bytecode.json",
+      "sha256": "252e803aa36a9a3cc37853623a9e76a9c15ba562895be804f2b9f6c0959889cb"
+    },
+    {
+      "kind": "blueprint-bytecode-export",
+      "source": "hilda_staff_bolt_thunder--ExecuteUbergraph_hilda_staff_bolt_thunder.bytecode.json",
+      "sha256": "06e7c5137f264469562b615b431d337b727d97ac80a5ea7bec0efc6ef4052d09"
+    },
+    {
+      "kind": "blueprint-bytecode-export",
+      "source": "hilda_staff_bolt_ice--ExecuteUbergraph_hilda_staff_bolt_ice.bytecode.json",
+      "sha256": "313a8007a4cbe919adffa25e816fd4231cd30319b4926efd4c5d818a2fff2994"
+    },
+    {
+      "kind": "blueprint-bytecode-export",
+      "source": "BaseSavePoint_BP--ExecuteUbergraph_BaseSavePoint_BP.bytecode.json",
+      "sha256": "143f2b8f33d13de2d7909a5f43d3d25729281fc6e2072ad08d41438badac5709"
+    },
+    {
+      "kind": "blueprint-bytecode-export",
+      "source": "MainGameInstance_BP--ExecuteUbergraph_MainGameInstance_BP.bytecode.json",
+      "sha256": "ffdf198a50c545969ca72588d067ec5abce0ee8ad3729d03e554fd9123697a90"
+    },
+    {
+      "kind": "blueprint-bytecode-export",
+      "source": "hilda_staff_atk4_ice_beam--ExecuteUbergraph_hilda_staff_atk4_ice_beam.bytecode.json",
+      "sha256": "98a941831de6825fc1c11e2a0725e58dd0122bd91ab149d2982f7f76e7386abf"
+    },
+    {
+      "kind": "blueprint-bytecode-export",
+      "source": "hilda_staff_atk4_fire_beam--ExecuteUbergraph_hilda_staff_atk4_fire_beam.bytecode.json",
+      "sha256": "44df2cb525e2a58df55930a6fb9fbf49c3143de18ec92db31fe63394e15c3834"
+    }
+  ],
+  "limits": [
+    "Hashes identify inspected files; do not prove native implementation, dynamic call order or runtime acceptance.",
+    "Generated UHT private cpp files contain stubs, not game function bodies.",
+    "Raw proprietary inputs and machine paths remain ignored/local; this manifest contains metadata only."
+  ]
+}
