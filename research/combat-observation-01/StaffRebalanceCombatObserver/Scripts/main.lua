@@ -1,0 +1,235 @@
+-- SPDX-License-Identifier: MPL-2.0
+local prefix = "STAFF_COMBAT_OBS01"
+local genesis = "/Script/Genesis."
+local projectile = genesis .. "BaseProjectile:"
+local global = genesis .. "GameGlobal:"
+local assets = "/Game/MainContent/Act/Skill_BP/PlayerSkill_BP/"
+local scene = "/Game/MainContent/Act/Scene_BP/BaseScene_BP/BaseSavePoint_BP.BaseSavePoint_BP_C:"
+local mode, sequence, generation = nil, 0, 0
+local hooks = {}
+
+local function log(event, detail)
+    print(prefix .. " " .. event .. " " .. (detail or "") .. "\n")
+end
+
+local function valid(object)
+    return object ~= nil and object:IsValid()
+end
+
+local function name(object)
+    return object:GetFName():ToString()
+end
+
+local function derived(object, expected)
+    if not valid(object) then return false end
+    local class = object:GetClass()
+    for _ = 1, 24 do
+        if not valid(class) then return false end
+        if name(class) == expected then return true end
+        class = class:GetSuperStruct()
+    end
+    return false
+end
+
+local function identity(object)
+    if not valid(object) then return "none" end
+    return name(object:GetClass()) .. "@" .. tostring(object:GetAddress())
+end
+
+-- ForEachProperty on this baseline exposes names and types, but not CPF flags.
+-- Only pinned scalar/object declarations are allowed, with a live shape check.
+local function check(path, native, static, expected)
+    local fn = StaticFindObject(path)
+    if not valid(fn) then log("SKIP", path .. " reason=not_loaded"); return false end
+    local flags = fn:GetFunctionFlags()
+    local fields = {}
+    fn:ForEachProperty(function(property)
+        local kind, field = property:GetFullName():match("^(%w+) .+:([^:]+)$")
+        fields[#fields + 1] = tostring(kind) .. ":" .. tostring(field)
+    end)
+    local shape = table.concat(fields, ",")
+    if fn:GetFullName() ~= "Function " .. path
+        or ((flags & 0x400) ~= 0) ~= native
+        or ((flags & 0x2000) ~= 0) ~= static
+        or (flags & 0x00400000) ~= 0
+        or shape ~= expected then
+        log("SKIP", path .. " reason=contract flags=" .. flags .. " fields=" .. shape)
+        return false
+    end
+    log("CHECKED", path .. " flags=" .. flags .. " fields=" .. shape)
+    return true
+end
+
+local function stop(reason)
+    if mode then log("STOP", "mode=" .. mode .. " reason=" .. reason .. " events=" .. sequence) end
+    mode = nil
+end
+
+local function cleanup()
+    local remaining = {}
+    for _, hook in ipairs(hooks) do
+        local ok, err = pcall(UnregisterHook, hook.path, hook.pre, hook.post)
+        if not ok then
+            remaining[#remaining + 1] = hook
+            log("CLEANUP_FAILED", hook.path .. " " .. tostring(err):sub(1, 140))
+        end
+    end
+    hooks = remaining
+end
+
+local function emit(event, detail)
+    sequence = sequence + 1
+    log(event, "mode=" .. mode .. " run=" .. generation .. " seq=" .. sequence
+        .. " wall=" .. os.time() .. " " .. detail)
+    if sequence >= 120 then stop("event_limit") end
+end
+
+local function guarded(fn)
+    local run = generation
+    return function(...)
+        if not mode or generation ~= run then return end
+        local ok, err = pcall(fn, ...)
+        if not ok then stop("callback_error"); log("ERROR", tostring(err):sub(1, 180)) end
+        -- Always return nil to UE4SS.
+    end
+end
+
+local function attach(path, shape, post, pre)
+    if not check(path, pre ~= nil, false, shape) then return end
+    local a, b
+    if pre then
+        a, b = RegisterHook(path, guarded(pre), guarded(post))
+    else
+        a, b = RegisterHook(path, guarded(post))
+    end
+    hooks[#hooks + 1] = {path = path, pre = a, post = b}
+    assert(type(a) == "number" and type(b) == "number" and a > 0 and b > 0
+        and ((a ~= b) == (pre ~= nil)), "unexpected hook IDs: " .. path)
+    log("HOOK", path .. " phase=" .. (pre and "native_pre/native_post" or "script_post"))
+end
+
+local function combat()
+    assert(check(global .. "GetPlayerCharacter", true, true, "ObjectProperty:ReturnValue"), "player getter unavailable")
+    assert(check(projectile .. "GetCharacterOwner", true, false, "ObjectProperty:ReturnValue"), "owner getter unavailable")
+    local sampleSkill = check(global .. "GetDoingSkill", true, true, "ObjectProperty:Character,NameProperty:ReturnValue")
+    local cdoPath = genesis .. "Default__GameGlobal"
+    local cdo = StaticFindObject(cdoPath)
+    assert(valid(cdo) and cdo:GetFullName() == "GameGlobal " .. cdoPath, "missing exact GameGlobal CDO")
+    local player = cdo:GetPlayerCharacter()
+    assert(derived(player, "GenesisCharacter") and name(player:GetClass()) == "hilda_BP_C", "load into playable Hilda first")
+    local playerId = identity(player)
+    -- Only scalar identities survive callback boundaries.
+    local function currentPlayer()
+        local live = StaticFindObject(cdoPath)
+        if not valid(live) then stop("missing_game_global"); return end
+        local owner = live:GetPlayerCharacter()
+        if identity(owner) ~= playerId then stop("player_changed"); return end
+        return owner, live
+    end
+    local function source(context, recordUnresolved)
+        local object = context:get()
+        if not valid(object) then return end
+        local cls = name(object:GetClass())
+        if not cls:match("^hilda_staff_") and cls ~= "hilda_dual_atk_C" then return end
+        if not derived(object, "BaseProjectile") then return end
+        local owner, live = currentPlayer()
+        if not owner then return end
+        local sourceOwner = identity(object:GetCharacterOwner())
+        if sourceOwner == playerId then return object, owner, live end
+        if recordUnresolved and sourceOwner == "none" then
+            emit("SOURCE_OWNER_UNRESOLVED", "phase=script_post source=" .. identity(object))
+        end
+    end
+    for _, event in ipairs({"BeginSkillStateEvent", "EndSkillStateEvent"}) do
+        attach(genesis .. "GenesisCharacter:" .. event, "NameProperty:Skill", function(context, skill)
+            if identity(context:get()) == playerId and currentPlayer() then
+                local value = skill:get():ToString()
+                if value:match("^hilda_staff_") or value:match("^hilda_dual_")
+                    or value:match("^mod2_hilda_staff_") or value:match("^hilda_ult_com05") then
+                    emit(event, "phase=script_post player=" .. playerId .. " skill=" .. string.format("%q", value))
+                end
+            end
+        end)
+    end
+    for _, asset in ipairs({"hilda_staff_bolt_astral", "hilda_staff_bolt_fire",
+        "hilda_staff_arrow", "hilda_staff_arrow_damage", "hilda_staff_atk4_astral_hit", "hilda_dual_atk"}) do
+        attach(assets .. asset .. "." .. asset .. "_C:ReceiveBeginPlay", "", function(context)
+            local object, owner, live = source(context, true)
+            if not object then return end
+            local skill = sampleSkill and live:GetDoingSkill(owner):ToString() or "unavailable"
+            emit("SOURCE_BEGIN", "phase=script_post source=" .. identity(object) .. " player=" .. playerId
+                .. " skill_at_sample=" .. string.format("%q", skill))
+        end)
+    end
+    attach(projectile .. "CharacterHitted",
+        "FloatProperty:damageValue,BoolProperty:defended,BoolProperty:knockBreak,BoolProperty:knockDown",
+        function(context, damage, defended, broken, down)
+            local object = source(context)
+            if object then
+                emit("HIT_NOTIFICATION", "phase=script_post source=" .. identity(object)
+                    .. " damage=" .. tostring(damage:get()) .. " defended=" .. tostring(defended:get())
+                    .. " break=" .. tostring(broken:get()) .. " down=" .. tostring(down:get()))
+            end
+        end)
+    local function rate(phase)
+        return function(context)
+            local object = source(context)
+            if object then emit("RATE_CALL", "phase=" .. phase .. " source=" .. identity(object)) end
+        end
+    end
+    attach(projectile .. "GetBaseDamageRate", "FloatProperty:ReturnValue", rate("native_post"), rate("native_pre"))
+end
+
+local function rest()
+    local function marker(event)
+        return function(context)
+            emit(event, "phase=script_post owner=" .. identity(context:get()))
+        end
+    end
+    attach(scene .. "Interact_Rest", "", marker("REST_REQUEST"))
+    attach(scene .. "Interact_Transport", "NameProperty:SavePointRowName", marker("TRANSPORT"))
+    attach(scene .. "Interact_EndUse", "", marker("MENU_EXIT"))
+    local root = "/Game/MainContent/Template/BaseBlueprint/MainGameInstance_BP"
+    attach(root .. ".MainGameInstance_BP_C:RecoverPlayerAndScene", "", marker("RECOVERY"))
+    attach("/Game/uiresources/GTGameHUDBPLocal.GTGameHUDBPLocal_C:EventOnRestEnd", "", marker("REST_END"))
+end
+
+local function start(requested)
+    if mode then log("BUSY", "mode=" .. mode); return end
+    cleanup()
+    if #hooks ~= 0 then log("UNAVAILABLE", "restart_required=cleanup_failed"); return end
+    generation, sequence = generation + 1, 0
+    local run = generation
+    mode = requested
+    local ok, err = pcall(function()
+        if requested == "combat" then combat() else rest() end
+        assert(#hooks > 0, "no compatible loaded observation points")
+        ExecuteInGameThreadWithDelay(requested == "combat" and 120000 or 90000, function()
+            if generation == run then stop("deadline"); cleanup() end
+        end)
+    end)
+    if ok then log("CAPTURE", "mode=" .. mode .. " hooks=" .. #hooks)
+    else stop("preflight"); log("ERROR", tostring(err):sub(1, 180)); cleanup() end
+end
+
+local function dispatch(action)
+    local ok, err = pcall(ExecuteInGameThread, action, EGameThreadMethod.EngineTick)
+    if not ok then stop("dispatch"); log("ERROR", tostring(err):sub(1, 180)) end
+end
+
+local ok, err = pcall(function()
+    assert(EngineTickAvailable == true and type(EGameThreadMethod.EngineTick) == "number", "EngineTick unavailable")
+    for _, api in ipairs({"StaticFindObject", "RegisterHook", "UnregisterHook", "RegisterKeyBind",
+        "IsKeyBindRegistered", "ExecuteInGameThread", "ExecuteInGameThreadWithDelay"}) do
+        assert(type(_G[api]) == "function", "missing API " .. api)
+    end
+    local modifiers = {ModifierKey.CONTROL, ModifierKey.SHIFT}
+    for _, key in ipairs({Key.F8, Key.F9, Key.F10}) do
+        assert(type(key) == "number" and not IsKeyBindRegistered(key, modifiers), "key collision")
+    end
+    RegisterKeyBind(Key.F8, modifiers, function() dispatch(function() start("combat") end) end)
+    RegisterKeyBind(Key.F9, modifiers, function() dispatch(function() start("rest") end) end)
+    RegisterKeyBind(Key.F10, modifiers, function() dispatch(function() stop("user"); cleanup() end) end)
+end)
+if ok then log("ARMED", "CtrlShiftF8=combat CtrlShiftF9=rest CtrlShiftF10=stop")
+else log("UNAVAILABLE", tostring(err):sub(1, 180)) end
