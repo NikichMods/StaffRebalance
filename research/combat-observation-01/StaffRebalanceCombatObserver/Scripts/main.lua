@@ -242,6 +242,29 @@ local ok, err = pcall(function()
     RegisterKeyBind(Key.F9, modifiers, function() dispatch("F9", function() start("rest") end) end)
     RegisterKeyBind(Key.F10, modifiers, function() dispatch("F10", function() stop("user"); cleanup() end) end)
 
+    -- Diagnostic alternative: distinguish bare key delivery from CTRL+SHIFT chord handling.
+    -- An unavailable bare key never prevents the original chord registrations.
+    local function registerBare(name, action)
+        local key = Key[name]
+        if type(key) ~= "number" then
+            log("BARE_KEY_UNAVAILABLE", "key=" .. name .. " reason=missing_key")
+            return
+        end
+        local registered, reason = pcall(function()
+            if IsKeyBindRegistered(key) then
+                log("BARE_KEY_UNAVAILABLE", "key=" .. name .. " reason=already_registered")
+                return
+            end
+            RegisterKeyBind(key, function() dispatch(name, action) end)
+            log("BARE_KEY_REGISTERED", "key=" .. name)
+        end)
+        if not registered then
+            log("BARE_KEY_UNAVAILABLE", "key=" .. name .. " reason=" .. tostring(reason):sub(1, 120))
+        end
+    end
+    registerBare("F6", function() start("combat") end)
+    registerBare("F7", function() stop("user"); cleanup() end)
+
     -- One-shot independent scheduler check even if no key callback is delivered.
     local tickOk, tickErr = pcall(ExecuteInGameThread, function()
         log("ENGINE_TICK_PING_ENTRY", "source=startup")
