@@ -1,13 +1,13 @@
 # StaffRebalance — статус
 
-**Этап:** Combat Observation 01 загрузился в первом игровом прогоне, но журнал содержит только `ARMED`. Захват боя и отдыха не подтверждён. Observer отключён. [Результат и границы](COMBAT_OBSERVATION_01.md#прогон-01).
+**Этап:** короткий прогон 02 подтвердил стартовый EngineTick callback. Клавиши F8/F10 не дали `KEY_CALLBACK`, захват не стартовал. Observer отключён. [Результат и границы](COMBAT_OBSERVATION_01.md#результат-прогона-02).
 
 - Дизайн: согласованы назначение посоха, принцип расхода заряда **при выполнении атаки**, ослабленный боевой урон при нуле, восполнение melee, полный запас при отдыхе у Conduit и сохранение AP/APR/контроля/стихий без изменений. Требования проекта: [REQUIREMENTS.md](REQUIREMENTS.md); исходные решения: [Asterigos-Research](https://github.com/NikichMods/Asterigos-Research/blob/main/docs/WEAPON_BALANCE_CONTRACTS.md).
 - Числа: количество зарядов, коэффициент ослабления и пополнение **не приняты**; нужны runtime-доказательства и сравнительные тесты.
 - **Production gate: BLOCKED.** Найдены реальные skill/timeline/projectile owners, дочерние damage sources, штатные перезаписи DamageRate и отдельная статическая rest/recovery chain. Не доказаны live commit/token одной выполненной атаки, наследование strong/weak, доступный pre-HP combat consumer, combat/world split и once-per-attack melee credit. Полный gate и точные границы доказательства — в [статическом отчёте](STATIC_COMBAT_RESEARCH_01.md).
 - Нет проверенной совместимости StaffRebalance, установленного payload, тестового номера, версии, релиза и проекта HUD. Игровые файлы в рамках bootstrap не исследовались; CI и сборочная инфраструктура не создавались.
 - [RESEARCH_PLAN.md](RESEARCH_PLAN.md) сохраняет внешний этап и связь с текущими находками; [EVIDENCE.json](../research/static-combat-01/EVIDENCE.json) фиксирует SHA-256 входов без proprietary payload и приватных путей. Проверены Steam build 12996889, прежний UE4SS DLL и совпадение выбранных UHT headers с сохранённой генерацией.
-- Короткий диагностический кандидат для прогона 02 подготовлен в исследовательской ветке: однократный EngineTick ping и раздельные метки `KEY_CALLBACK` / `DISPATCH_RETURNED` / `ENGINE_TICK_ENTRY`. **В игре не проверен**, прежний прогон 01 остаётся единственным результатом. [Процедура](COMBAT_OBSERVATION_01.md#подготовка-короткой-проверки-доставки-событий--прогон-02-без-runtime-подтверждения). Безопасная reflected точка прямого наблюдения записи HP пока отсутствует.
+- Следующий шаг при продолжении — проверить доставку клавиш отдельно от боевого сценария. Безопасная reflected точка прямого наблюдения записи HP пока отсутствует.
 
 ## Организационное состояние
 
