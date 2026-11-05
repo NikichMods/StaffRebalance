@@ -212,9 +212,20 @@ local function start(requested)
     else stop("preflight"); log("ERROR", tostring(err):sub(1, 180)); cleanup() end
 end
 
-local function dispatch(action)
-    local ok, err = pcall(ExecuteInGameThread, action, EGameThreadMethod.EngineTick)
-    if not ok then stop("dispatch"); log("ERROR", tostring(err):sub(1, 180)) end
+-- Trace delivery, scheduling and execution separately; registration alone proves none of them.
+local function dispatch(keyName, action)
+    log("KEY_CALLBACK", "key=" .. keyName)
+    local ok, err = pcall(ExecuteInGameThread, function()
+        log("ENGINE_TICK_ENTRY", "key=" .. keyName)
+        action()
+    end, EGameThreadMethod.EngineTick)
+    if ok then
+        -- Only means ExecuteInGameThread returned; execution is proved by ENGINE_TICK_ENTRY.
+        log("DISPATCH_RETURNED", "key=" .. keyName .. " method=EngineTick")
+    else
+        stop("dispatch")
+        log("ERROR", "key=" .. keyName .. " " .. tostring(err):sub(1, 180))
+    end
 end
 
 local ok, err = pcall(function()
@@ -227,9 +238,19 @@ local ok, err = pcall(function()
     for _, key in ipairs({Key.F8, Key.F9, Key.F10}) do
         assert(type(key) == "number" and not IsKeyBindRegistered(key, modifiers), "key collision")
     end
-    RegisterKeyBind(Key.F8, modifiers, function() dispatch(function() start("combat") end) end)
-    RegisterKeyBind(Key.F9, modifiers, function() dispatch(function() start("rest") end) end)
-    RegisterKeyBind(Key.F10, modifiers, function() dispatch(function() stop("user"); cleanup() end) end)
+    RegisterKeyBind(Key.F8, modifiers, function() dispatch("F8", function() start("combat") end) end)
+    RegisterKeyBind(Key.F9, modifiers, function() dispatch("F9", function() start("rest") end) end)
+    RegisterKeyBind(Key.F10, modifiers, function() dispatch("F10", function() stop("user"); cleanup() end) end)
+
+    -- One-shot independent scheduler check even if no key callback is delivered.
+    local tickOk, tickErr = pcall(ExecuteInGameThread, function()
+        log("ENGINE_TICK_PING_ENTRY", "source=startup")
+    end, EGameThreadMethod.EngineTick)
+    if tickOk then
+        log("ENGINE_TICK_PING_RETURNED", "source=startup")
+    else
+        log("ENGINE_TICK_PING_ERROR", tostring(tickErr):sub(1, 180))
+    end
 end)
 if ok then log("ARMED", "CtrlShiftF8=combat CtrlShiftF9=rest CtrlShiftF10=stop")
 else log("UNAVAILABLE", tostring(err):sub(1, 180)) end
