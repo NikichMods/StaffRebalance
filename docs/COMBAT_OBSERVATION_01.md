@@ -1,13 +1,14 @@
 # Combat Observation 01
 
-**Состояние:** исходник подготовлен и проверен в Lua 5.4 с имитацией API. Установка ожидает закрытия соседнего кандидата. Проверки регистрации и вызовов в игре остаются открытыми. Production gate **BLOCKED**.
+**Состояние:** observer установлен и активирован при закрытой игре 2026-11-05. Исходник проверен в Lua 5.4 с имитацией API. Проверки регистрации и вызовов в игре остаются открытыми. Production gate **BLOCKED**.
 
 ## Идентичность и предпосылки
 
 - База StaffRebalance `9348a6ff7d8206b725f089428652ccbec8012675`. Источник схемы боя [Static Combat Research 01](STATIC_COMBAT_RESEARCH_01.md). Цели [ТЗ наблюдения](RUNTIME_OBSERVATION_TASK_01.md).
 - Steam baseline 1.09 / 12996889 / UE4.27. SHA-256 установленной UE4SS.dll совпал с исследованным `83330635`: `ce5e3c46a920cc00b2817ac61e438c9162830290379d0b5b9c4dfc2b29459290`.
 - Исследовательский мод `StaffRebalanceCombatObserver`, один [Scripts/main.lua](../research/combat-observation-01/StaffRebalanceCombatObserver/Scripts/main.lua). SHA-256 файла с LF `8a62d2cf3212a4a77c0871da1638a83949c47b8c30cc40f81eb6847f774f1482`. Для установки копировать байты из Git blob этой версии и проверить хеш. Включение отдельным `enabled.txt` в каталоге observer при закрытой игре. Отключение удалением только этого marker при закрытой игре.
-- Активный SoulsEnemyHUD указан в `mods.txt`. SHA-256 его установленного `Scripts/main.lua` совпадает с документированным кандидатом 0.3.3. Его статус ждёт игровой приёмки. Установка observer и проверка в игре отложены по правилу раздельных прогонов. [Кандидат SoulsEnemyHUD 0.3.3](https://github.com/NikichMods/SoulsEnemyHUD/blob/fix/safe-game-thread-scheduler/docs/CANDIDATE-0.3.3.md).
+- Приёмка SoulsEnemyHUD 0.3.3 зафиксирована 2026-11-05, версия опубликована. SHA-256 установленного Lua совпал с принятым кандидатом. [Приёмка и релиз](https://github.com/NikichMods/SoulsEnemyHUD/blob/93412a65dfa71fb4e9ffb392a9ba15d3a785c5d0/docs/RELEASE-0.3.3.md).
+- Установлен Git blob из `b3f11657cf56cd8f5091a813be575919fbea2e47`. SHA-256 установленного `Scripts/main.lua` совпал с указанным выше. `enabled.txt` создан после проверки Lua. Хеш `mods.txt` совпал до и после установки. Предыдущий UE4SS.log сохранён локально с SHA-256 `f2cc24a824b031465906ba00317e15af68c5b232a391c1b9d23874ebd3e544c7`.
 
 ## Точки наблюдения и границы
 

@@ -1,13 +1,13 @@
 # StaffRebalance — статус
 
-**Этап:** Combat Observation 01 подготовлен в `research/combat-observation-01` на базе завершённого Static Combat Research 01. Lua прошёл проверку офлайн. Установка ожидает закрытия активного SoulsEnemyHUD 0.3.3. [Точки наблюдения, доказательства и игровой прогон](COMBAT_OBSERVATION_01.md).
+**Этап:** Combat Observation 01 установлен после подтверждения приёмки SoulsEnemyHUD 0.3.3. Ожидается первый игровой прогон. [Точки наблюдения, идентичность установки и игровой прогон](COMBAT_OBSERVATION_01.md).
 
 - Дизайн: согласованы назначение посоха, принцип расхода заряда **при выполнении атаки**, ослабленный боевой урон при нуле, восполнение melee, полный запас при отдыхе у Conduit и сохранение AP/APR/контроля/стихий без изменений. Требования проекта: [REQUIREMENTS.md](REQUIREMENTS.md); исходные решения: [Asterigos-Research](https://github.com/NikichMods/Asterigos-Research/blob/main/docs/WEAPON_BALANCE_CONTRACTS.md).
 - Числа: количество зарядов, коэффициент ослабления и пополнение **не приняты**; нужны runtime-доказательства и сравнительные тесты.
 - **Production gate: BLOCKED.** Найдены реальные skill/timeline/projectile owners, дочерние damage sources, штатные перезаписи DamageRate и отдельная статическая rest/recovery chain. Не доказаны live commit/token одной выполненной атаки, наследование strong/weak, доступный pre-HP combat consumer, combat/world split и once-per-attack melee credit. Полный gate и точные границы доказательства — в [статическом отчёте](STATIC_COMBAT_RESEARCH_01.md).
 - Нет проверенной совместимости StaffRebalance, установленного payload, тестового номера, версии, релиза и проекта HUD. Игровые файлы в рамках bootstrap не исследовались; CI и сборочная инфраструктура не создавались.
 - [RESEARCH_PLAN.md](RESEARCH_PLAN.md) сохраняет внешний этап и связь с текущими находками; [EVIDENCE.json](../research/static-combat-01/EVIDENCE.json) фиксирует SHA-256 входов без proprietary payload и приватных путей. Проверены Steam build 12996889, прежний UE4SS DLL и совпадение выбранных UHT headers с сохранённой генерацией.
-- Следующий шаг — закрыть соседний кандидат, установить точную копию observer и пройти два раздельных захвата. Combat фиксирует исполнение, источники и доступные уведомления, rest фиксирует отдельные ветви Conduit. Безопасная reflected точка прямого наблюдения записи HP пока отсутствует.
+- Следующий шаг — пройти два раздельных захвата и сверить закрытый журнал. Combat фиксирует исполнение, источники и доступные уведомления, rest фиксирует отдельные ветви Conduit. Безопасная reflected точка прямого наблюдения записи HP пока отсутствует.
 
 ## Организационное состояние
 
