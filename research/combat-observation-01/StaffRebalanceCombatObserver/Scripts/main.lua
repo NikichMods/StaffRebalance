@@ -262,7 +262,7 @@ local ok, err = pcall(function()
             log("BARE_KEY_UNAVAILABLE", "key=" .. name .. " reason=" .. tostring(reason):sub(1, 120))
         end
     end
-    registerBare("F6", function() start("combat") end)
+    registerBare("F4", function() start("combat") end)
     registerBare("F7", function() stop("user"); cleanup() end)
 
     -- One-shot independent scheduler check even if no key callback is delivered.
@@ -275,5 +275,5 @@ local ok, err = pcall(function()
         log("ENGINE_TICK_PING_ERROR", tostring(tickErr):sub(1, 180))
     end
 end)
-if ok then log("ARMED", "CtrlShiftF8=combat CtrlShiftF9=rest CtrlShiftF10=stop")
+if ok then log("ARMED", "F4=combat F7=stop (see BARE_KEY_*); CtrlShiftF8=combat CtrlShiftF9=rest CtrlShiftF10=stop")
 else log("UNAVAILABLE", tostring(err):sub(1, 180)) end
