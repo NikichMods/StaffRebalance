@@ -98,8 +98,8 @@ local function guarded(fn)
     end
 end
 
-local function attach(path, shape, post, pre, offsets)
-    if not check(path, pre ~= nil, false, shape, offsets) then return end
+local function attach(path, shape, post, pre, offsets, static)
+    if not check(path, pre ~= nil, static == true, shape, offsets) then return end
     local a, b
     if pre then
         a, b = RegisterHook(path, guarded(pre), guarded(post))
@@ -185,17 +185,30 @@ local function combat()
 end
 
 local function rest()
+    assert(type(IsInGameThread) == "function" and IsInGameThread(), "rest preflight outside game thread")
+    local root = "/Game/MainContent/Template/BaseBlueprint/"
+    local hud = "/Game/uiresources/GTGameHUDBPLocal.GTGameHUDBPLocal_C:"
     local function marker(event)
         return function(context)
+            if not IsInGameThread() then stop("wrong_thread"); return end
             emit(event, "phase=script_post owner=" .. identity(context:get()))
         end
     end
+    attach(hud .. "EventShowSavePointList", "NameProperty:DataName,StrProperty:DebugPointName", marker("MENU_OPEN"))
     attach(scene .. "Interact_Rest", "", marker("REST_REQUEST"))
     attach(scene .. "Interact_Transport", "NameProperty:SavePointRowName", marker("TRANSPORT"))
     attach(scene .. "Interact_EndUse", "", marker("MENU_EXIT"))
-    local root = "/Game/MainContent/Template/BaseBlueprint/MainGameInstance_BP"
-    attach(root .. ".MainGameInstance_BP_C:RecoverPlayerAndScene", "", marker("RECOVERY"))
-    attach("/Game/uiresources/GTGameHUDBPLocal.GTGameHUDBPLocal_C:EventOnRestEnd", "", marker("REST_END"))
+    attach(root .. "MainGameInstance_BP.MainGameInstance_BP_C:RecoverPlayerAndScene", "", marker("RECOVERY"))
+    attach(hud .. "EventOnRestEnd", "", marker("REST_END"))
+    -- Only __WorldContext is a parameter. ForEachProperty also enumerates the local.
+    attach(root .. "GameGlobalBlueprintLibrary.GameGlobalBlueprintLibrary_C:RecoverPlayerAndScene",
+        "ObjectProperty:__WorldContext,ObjectProperty:CallFunc_GetGenesisGameInstance_ReturnValue",
+        function(context, worldContext)
+            if not IsInGameThread() then stop("wrong_thread"); return end
+            emit("RECOVERY_CONTEXT", "phase=script_post owner=" .. identity(context:get())
+                .. " world_context=" .. identity(worldContext:get()))
+        end, nil, nil, true)
+    assert(#hooks == 7, "incomplete rest contract; load gameplay near Conduit and retry")
 end
 
 local function fire()

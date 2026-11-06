@@ -176,3 +176,25 @@ F4 теперь ставит только точный `BaseAICharacter_Mob_BP_C
 - Строки 756–760 подтверждают F7, `STOP reason=user events=1` и снятие script hook. После закрытия игры снят маркер observer. Маркеры других модов и `mods.txt` сверены.
 
 Происхождение взрыва и цель теперь подтверждены при реальном `ProjectileHitEvent`. Фактическая потеря HP не измерялась. Проход Fire через `0x10C493C`, живые объекты и slots в кадре CALL и конечный получатель redirect остаются открытыми. Без безопасного способа наблюдать эти данные непосредственно у CALL оснований для выбора native-инструментирования пока нет. Production gate остаётся **BLOCKED**.
+
+## Conduit Rest 01
+
+Повторно использована [статическая цепочка отдыха](STATIC_COMBAT_RESEARCH_01.md#d-отдых-у-conduit). В `BaseSavePoint_BP` entry 5991 запускает rest-ветвь с таймерами. У offset 2241 обёртка `GameGlobalBlueprintLibrary_C:RecoverPlayerAndScene` получает `EX_Self`, то есть экземпляр Conduit. У offset 2149 отдельная ветвь вызывает `GTGameHUDBPLocal_C:EventOnRestEnd`. Это разные ветви таймеров, их фактический порядок ещё предстоит измерить. `MainGameInstance_BP_C:RecoverPlayerAndScene` остаётся общим действием. Одна его запись не подтверждает отдых.
+
+Точные загруженные Blueprint-функции проверяются перед включением захвата. Все семь callbacks запрашиваются в script post.
+
+| Маркер | Точная функция | Cooked-параметры |
+| --- | --- | --- |
+| `MENU_OPEN` | `GTGameHUDBPLocal_C:EventShowSavePointList` | `FName DataName, FString DebugPointName` |
+| `MENU_EXIT` | `BaseSavePoint_BP_C:Interact_EndUse` | — |
+| `REST_REQUEST` | `BaseSavePoint_BP_C:Interact_Rest` | — |
+| `TRANSPORT` | `BaseSavePoint_BP_C:Interact_Transport` | `FName SavePointRowName` |
+| `RECOVERY_CONTEXT` | `GameGlobalBlueprintLibrary_C:RecoverPlayerAndScene` | static, `UObject* __WorldContext`, плюс локальная ObjectProperty `CallFunc_GetGenesisGameInstance_ReturnValue` в проверке формы |
+| `RECOVERY` | `MainGameInstance_BP_C:RecoverPlayerAndScene` | — |
+| `REST_END` | `GTGameHUDBPLocal_C:EventOnRestEnd` | — |
+
+У параметров нет out/reference. Установленный UE4SS `83330635` поддерживает `GetParam` для FName, FString и UObject. Observer читает контексты событий и только один UObject-параметр `__WorldContext`. FName/FString не разыменовывает. Адреса используются только для сравнения экземпляров в пределах захвата. Таймерные callbacks с `TimerDelayHandle` по ссылке не перехватываются. [Параметры UE4SS](https://github.com/UE4SS-RE/RE-UE4SS/blob/8333063595fa3c49ad307f3b0f732accbb760d25/UE4SS/src/LuaType/LuaUObject.cpp#L1572).
+
+Проба требует все семь точек, без принудительной загрузки классов. При несовпадении контрактов частичные регистрации снимаются. Лимиты — 90 секунд и 120 событий. Lua 5.4 mock проверил логирование контекста, отказ при недоступном HUD, остановку с очисткой, дедлайн, игнорирование старого callback и конфликт хоткея. Регистрация и последовательность в игре ожидаются. SHA-256 Lua `8c83f09187620afebd024072002af3c28deebaf5b2b56f91a702bb274971fde3`.
+
+**Сценарий.** У уже активированного Conduit с закрытым меню нажать Ctrl+Shift+F9. Открыть меню, закрыть без отдыха. Открыть снова, выбрать обычный отдых, дождаться возврата управления. Нажать Ctrl+Shift+F10 и закрыть игру. Телепортация имеет отдельный делегат и ветвь по статике, в этом прогоне не проверяется. Проверяемый кандидат для будущего мода — подтверждённый запрос и завершение восстановления с контекстом того же Conduit. Роль `REST_END` и минимальную комбинацию определит фактический trace. Native damage-hook `0x10C493C` отложен до отдельного безопасного метода. Production gate остаётся **BLOCKED**.
