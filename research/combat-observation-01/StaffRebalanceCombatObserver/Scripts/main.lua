@@ -45,6 +45,8 @@ local function check(path, native, static, expected, offsets)
     local fields = {}
     fn:ForEachProperty(function(property)
         local kind, field = property:GetFullName():match("^(%w+) .+:([^:]+)$")
+        -- The Fire layout check uses FName semantics for parameter names.
+        if offsets and field then field = field:lower() end
         local entry = tostring(kind) .. ":" .. tostring(field)
         if offsets then entry = entry .. "@" .. property:GetOffset_Internal() end
         fields[#fields + 1] = entry
@@ -222,7 +224,7 @@ local function fire()
     end
 
     local hitPath = "/Game/MainContent/Template/BaseBlueprint/BaseAICharacter_Mob_BP.BaseAICharacter_Mob_BP_C:ProjectileHitEvent"
-    local shape = "ObjectProperty:projectile@0,ObjectProperty:hitComponent@8,StructProperty:hitPosition@16,FloatProperty:damage@28"
+    local shape = "ObjectProperty:projectile@0,ObjectProperty:hitcomponent@8,StructProperty:hitposition@16,FloatProperty:damage@28"
     attach(hitPath, shape, function(context, sourceParam, _hitComponent, _hitPosition, damageParam)
         if not IsInGameThread() then stop("wrong_thread"); return end
         local target = context:get()
