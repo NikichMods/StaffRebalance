@@ -348,8 +348,8 @@ local ok, err = pcall(function()
         end
         return registered and reason == true
     end
-    local fireStopAvailable = registerBare("F7", function() stop("user"); cleanup() end)
-    if fireStopAvailable then registerBare("F4", function() start("fire") end) end
+    local restStopAvailable = registerBare("F7", function() stop("user"); cleanup() end)
+    if restStopAvailable then registerBare("F4", function() start("rest") end) end
 
     -- One-shot independent scheduler check even if no key callback is delivered.
     local tickOk, tickErr = pcall(ExecuteInGameThread, function()
@@ -361,5 +361,5 @@ local ok, err = pcall(function()
         log("ENGINE_TICK_PING_ERROR", tostring(tickErr):sub(1, 180))
     end
 end)
-if ok then log("ARMED", "F4=fire F7=stop (see BARE_KEY_*); CtrlShiftF8=combat CtrlShiftF9=rest CtrlShiftF10=stop")
+if ok then log("ARMED", "F4=rest F7=stop (see BARE_KEY_*); CtrlShiftF8=combat CtrlShiftF9=rest CtrlShiftF10=stop")
 else log("UNAVAILABLE", tostring(err):sub(1, 180)) end
