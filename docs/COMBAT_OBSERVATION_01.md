@@ -138,3 +138,22 @@
 - Строки 785–790 подтверждают остановку F7 с 10 событиями и снятие обоих хуков. После выхода игры снят `enabled.txt` Fire observer, сохранены `mods.txt` и маркер CompactLayoutProbe.
 
 Подтверждены эффективный ключ и происхождение при `ReceiveBeginPlay` для пяти наблюдавшихся экземпляров. Прогон не проверял чужие применения `sphere_200_C`, конкретную цель каждого взрыва, поля при `0x10C493C` или изменение HP. Production gate остаётся **BLOCKED**.
+
+## Fire 02 — ProjectileHitEvent
+
+UHT `GenesisCharacter.h:159` объявляет `ProjectileHitEvent(ABaseProjectile*, UPrimitiveComponent*, FVector_NetQuantize, float)`. На подтверждённом EXE нативная обёртка `0x1296DC0` кладёт аргументы в `+0x00`, `+0x08`, `+0x10`, `+0x1C`, разрешает имя события и вызывает виртуальный dispatch цели `+0x220`. В `BaseAICharacter_Mob_BP_C` найден собственный script override родительской декларации. У `m006_thugdagger_BP_C` и `m006_2_thugdagger_BP_C`, встречавшихся в предыдущем Fire-прогоне, собственного override нет. SHA-256 точечного экспорта `BaseAICharacter_Mob_BP` — `3164ca6926bea535acb01aeb71fdbde0587f1e9a4b859a28cd377795f026b8a3`. SHA-256 экспорта bytecode события — `c74f5f7bfac5ae0830ac46d215bc25d3c789feca342ecf5014dea87dc0739f48`.
+
+| Параметр cooked override | Тип | Offset | Размер |
+| --- | --- | ---: | ---: |
+| `projectile` | `ABaseProjectile*` | `0x00` | 8 |
+| `hitComponent` | `UPrimitiveComponent*` | `0x08` | 8 |
+| `hitPosition` | `/Script/Engine.Vector_NetQuantize` | `0x10` | 12 |
+| `damage` | `float` | `0x1C` | 4 |
+
+Все четыре — `Parm`, без `OutParm`, `ReferenceParm` и `ReturnParm`. На UE4.27 точный script hook использует post `ProcessLocalScriptFunction`. UE4SS проверяет script entry через `ProcessInternal` и до Lua callback передаёт свойства из `Stack.Locals()`. Struct pusher в режиме `GetParam` создаёт обёртку с указателем на данные и метаданными. Чтение полей требует последующего обращения. Observer не вызывает `get` для `hitPosition` или `hitComponent` и не удерживает обёртки. Этот вывод относится только к данной сигнатуре и UE4SS `83330635`, SHA-256 установленного DLL `ce5e3c46a920cc00b2817ac61e438c9162830290379d0b5b9c4dfc2b29459290`. [Регистрация и подготовка аргументов UE4SS](https://github.com/UE4SS-RE/RE-UE4SS/blob/8333063595fa3c49ad307f3b0f732accbb760d25/UE4SS/src/Mod/LuaMod.cpp), [struct pusher](https://github.com/UE4SS-RE/RE-UE4SS/blob/8333063595fa3c49ad307f3b0f732accbb760d25/UE4SS/src/LuaType/LuaUObject.cpp#L746).
+
+F4 теперь ставит только точный `BaseAICharacter_Mob_BP_C:ProjectileHitEvent` с live-проверкой имени, флагов, порядка, типов и offsets параметров. F4 не регистрируется при недоступной F7. Ограничения — 45 секунд и не более 120 событий. Callback читает только на игровом потоке. Цель — контекст override класса обычных мобов, без вывода о враждебности любого такого экземпляра. Взрыв идентифицируется по точному классу и строке, Actor Owner должен быть точным Fire-болтом со своей строкой, оба CharacterOwner должны совпасть с Хильдой. Для прямого болта проверяются точный класс, ключ и оба владельца. Неполные совпадения записываются как `matched=false` для диагностики. Посторонняя сфера без Fire-ключа и Fire-родителя пропускается. Lua 5.4 mock проверил оба положительных случая, неполную цепочку, постороннюю сферу, несовпадение offset, запрет чтения лишних аргументов, остановку, дедлайн, отказ вне игрового потока и конфликт F7.
+
+**Сценарий.** Подойти к обычному противнику с Fire-посохом. Нажать F4, выполнить одно обычное попадание, нажать F7 и закрыть игру. Ожидаются `CAPTURE mode=fire hooks=1` и `FIRE_HIT` для источника, который реально вызвал уведомление. Прогрев Fire-снарядом не нужен, но Blueprint цели должен быть загружен. SHA-256 Lua — `504b7c888e04be9b6d2cc727083d4fb46e6d70b576da95adbe8faea71a2c40c1`. Игровой результат ожидается.
+
+Даже положительный `FIRE_HIT` докажет только значения в post-фазе уведомления. Он не докажет достижение `0x10C493C`, живые объекты и slots в кадре CALL, конечного получателя redirect или фактическую потерю HP. Для решения по native-инструментированию остаётся нужен безопасный съём этих значений в одном кадре CALL с доказуемым снятием наблюдения. Production gate остаётся **BLOCKED**.

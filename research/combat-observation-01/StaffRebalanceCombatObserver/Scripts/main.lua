@@ -37,15 +37,17 @@ local function identity(object)
 end
 
 -- ForEachProperty on this baseline exposes names and types, but not CPF flags.
--- Only pinned scalar/object declarations are allowed, with a live shape check.
-local function check(path, native, static, expected)
+-- Fire hit permits one audited by-value struct, which the callback never accesses.
+local function check(path, native, static, expected, offsets)
     local fn = StaticFindObject(path)
     if not valid(fn) then log("SKIP", path .. " reason=not_loaded"); return false end
     local flags = fn:GetFunctionFlags()
     local fields = {}
     fn:ForEachProperty(function(property)
         local kind, field = property:GetFullName():match("^(%w+) .+:([^:]+)$")
-        fields[#fields + 1] = tostring(kind) .. ":" .. tostring(field)
+        local entry = tostring(kind) .. ":" .. tostring(field)
+        if offsets then entry = entry .. "@" .. property:GetOffset_Internal() end
+        fields[#fields + 1] = entry
     end)
     local shape = table.concat(fields, ",")
     if fn:GetFullName() ~= "Function " .. path
@@ -94,8 +96,8 @@ local function guarded(fn)
     end
 end
 
-local function attach(path, shape, post, pre)
-    if not check(path, pre ~= nil, false, shape) then return end
+local function attach(path, shape, post, pre, offsets)
+    if not check(path, pre ~= nil, false, shape, offsets) then return end
     local a, b
     if pre then
         a, b = RegisterHook(path, guarded(pre), guarded(post))
@@ -195,6 +197,7 @@ local function rest()
 end
 
 local function fire()
+    assert(type(IsInGameThread) == "function" and IsInGameThread(), "Fire preflight outside game thread")
     local playerGetter = global .. "GetPlayerCharacter"
     assert(check(playerGetter, true, true, "ObjectProperty:ReturnValue"), "player getter unavailable")
     assert(check(projectile .. "GetCharacterOwner", true, false, "ObjectProperty:ReturnValue"), "character owner getter unavailable")
@@ -218,36 +221,44 @@ local function fire()
         return value and value:ToString() or "unavailable"
     end
 
-    local function observe(path, isSphere)
-        attach(path .. ":ReceiveBeginPlay", "", function(context)
-            local object = context:get()
-            if not exact(object, path) or not derived(object, "BaseProjectile") then return end
-            local key = row(object)
-            local actorOwner = object:GetOwner()
-            local parentKey = exact(actorOwner, boltPath) and row(actorOwner) or "none"
-            if isSphere and key ~= explosionKey and parentKey ~= boltKey then return end
-            local live = StaticFindObject(cdoPath)
-            if not valid(live) or identity(live:GetPlayerCharacter()) ~= playerId then
-                stop("player_changed")
-                return
-            end
-            local characterOwner = identity(object:GetCharacterOwner())
-            local parentCharacterOwner = parentKey ~= "none" and identity(actorOwner:GetCharacterOwner()) or "none"
-            local matched = isSphere and key == explosionKey and parentKey == boltKey
-                and characterOwner == playerId and parentCharacterOwner == playerId
-            emit(isSphere and "FIRE_SPHERE_BEGIN" or "FIRE_BOLT_BEGIN",
-                "phase=script_post class=" .. path .. " source=" .. identity(object)
-                .. " row=" .. string.format("%q", key) .. " actor_owner=" .. identity(actorOwner)
-                .. " parent_row=" .. string.format("%q", parentKey)
-                .. " character_owner=" .. characterOwner .. " parent_character_owner=" .. parentCharacterOwner
-                .. " player=" .. playerId .. " matched=" .. tostring(matched))
-        end)
-    end
-
-    observe(spherePath, true)
-    assert(#hooks == 1, "exact sphere BeginPlay unavailable; fire warm-up then retry F4")
-    observe(boltPath, false)
-    assert(#hooks == 2, "exact Fire bolt BeginPlay unavailable")
+    local hitPath = "/Game/MainContent/Template/BaseBlueprint/BaseAICharacter_Mob_BP.BaseAICharacter_Mob_BP_C:ProjectileHitEvent"
+    local shape = "ObjectProperty:projectile@0,ObjectProperty:hitComponent@8,StructProperty:hitPosition@16,FloatProperty:damage@28"
+    attach(hitPath, shape, function(context, sourceParam, _hitComponent, _hitPosition, damageParam)
+        if not IsInGameThread() then stop("wrong_thread"); return end
+        local target = context:get()
+        if not derived(target, "BaseAICharacter_Mob_BP_C") then return end
+        local object = sourceParam:get()
+        local isSphere = exact(object, spherePath)
+        if not isSphere and not exact(object, boltPath) then return end
+        local key = row(object)
+        local actorOwner = object:GetOwner()
+        local parentKey = exact(actorOwner, boltPath) and row(actorOwner) or "none"
+        if (isSphere and key ~= explosionKey and parentKey ~= boltKey)
+            or (not isSphere and key ~= boltKey) then return end
+        local live = StaticFindObject(cdoPath)
+        if not valid(live) or identity(live:GetPlayerCharacter()) ~= playerId then
+            stop("player_changed")
+            return
+        end
+        local actorOwnerId = identity(actorOwner)
+        local characterOwner = identity(object:GetCharacterOwner())
+        local parentCharacterOwner = parentKey ~= "none" and identity(actorOwner:GetCharacterOwner()) or "none"
+        local matched = characterOwner == playerId and (
+            (isSphere and key == explosionKey and parentKey == boltKey and parentCharacterOwner == playerId)
+            or (not isSphere and actorOwnerId == playerId))
+        local damage = damageParam:get()
+        assert(type(damage) == "number" and math.abs(damage) < math.huge, "non-finite notified damage")
+        emit("FIRE_HIT",
+            "phase=script_post kind=" .. (isSphere and "explosion" or "bolt")
+            .. " class=" .. (isSphere and spherePath or boltPath)
+            .. " source=" .. identity(object) .. " target=" .. identity(target)
+            .. " row=" .. string.format("%q", key) .. " actor_owner=" .. actorOwnerId
+            .. " parent_row=" .. string.format("%q", parentKey)
+            .. " character_owner=" .. characterOwner .. " parent_character_owner=" .. parentCharacterOwner
+            .. " player=" .. playerId .. " matched=" .. tostring(matched)
+            .. " notified_damage=" .. tostring(damage))
+    end, nil, true)
+    assert(#hooks == 1, "exact mob ProjectileHitEvent unavailable")
 end
 
 local function start(requested)
@@ -315,13 +326,15 @@ local ok, err = pcall(function()
             end
             RegisterKeyBind(key, function() dispatch(name, action) end)
             log("BARE_KEY_REGISTERED", "key=" .. name)
+            return true
         end)
         if not registered then
             log("BARE_KEY_UNAVAILABLE", "key=" .. name .. " reason=" .. tostring(reason):sub(1, 120))
         end
+        return registered and reason == true
     end
-    registerBare("F4", function() start("fire") end)
-    registerBare("F7", function() stop("user"); cleanup() end)
+    local fireStopAvailable = registerBare("F7", function() stop("user"); cleanup() end)
+    if fireStopAvailable then registerBare("F4", function() start("fire") end) end
 
     -- One-shot independent scheduler check even if no key callback is delivered.
     local tickOk, tickErr = pcall(ExecuteInGameThread, function()
