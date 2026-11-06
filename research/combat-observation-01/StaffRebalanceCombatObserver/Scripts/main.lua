@@ -194,6 +194,62 @@ local function rest()
     attach("/Game/uiresources/GTGameHUDBPLocal.GTGameHUDBPLocal_C:EventOnRestEnd", "", marker("REST_END"))
 end
 
+local function fire()
+    local playerGetter = global .. "GetPlayerCharacter"
+    assert(check(playerGetter, true, true, "ObjectProperty:ReturnValue"), "player getter unavailable")
+    assert(check(projectile .. "GetCharacterOwner", true, false, "ObjectProperty:ReturnValue"), "character owner getter unavailable")
+    assert(check("/Script/Engine.Actor:GetOwner", true, false, "ObjectProperty:ReturnValue"), "actor owner getter unavailable")
+    local cdoPath = genesis .. "Default__GameGlobal"
+    local boltPath = assets .. "hilda_staff_bolt_fire.hilda_staff_bolt_fire_C"
+    local spherePath = "/Game/MainContent/Act/Skill_BP/CommonSkill_BP/sphere_200.sphere_200_C"
+    local boltKey, explosionKey = "hilda_staff_bolt_fire", "hilda_staff_bolt_fire_explosion"
+    local cdo = StaticFindObject(cdoPath)
+    assert(valid(cdo) and cdo:GetFullName() == "GameGlobal " .. cdoPath, "missing exact GameGlobal CDO")
+    local player = cdo:GetPlayerCharacter()
+    assert(derived(player, "GenesisCharacter") and name(player:GetClass()) == "hilda_BP_C", "load into playable Hilda first")
+    local playerId = identity(player)
+
+    local function exact(object, path)
+        return valid(object) and object:GetClass():GetFullName():match("^[^ ]+ (.+)$") == path
+    end
+
+    local function row(object)
+        local value = object.ProjectileDataName
+        return value and value:ToString() or "unavailable"
+    end
+
+    local function observe(path, isSphere)
+        attach(path .. ":ReceiveBeginPlay", "", function(context)
+            local object = context:get()
+            if not exact(object, path) or not derived(object, "BaseProjectile") then return end
+            local key = row(object)
+            local actorOwner = object:GetOwner()
+            local parentKey = exact(actorOwner, boltPath) and row(actorOwner) or "none"
+            if isSphere and key ~= explosionKey and parentKey ~= boltKey then return end
+            local live = StaticFindObject(cdoPath)
+            if not valid(live) or identity(live:GetPlayerCharacter()) ~= playerId then
+                stop("player_changed")
+                return
+            end
+            local characterOwner = identity(object:GetCharacterOwner())
+            local parentCharacterOwner = parentKey ~= "none" and identity(actorOwner:GetCharacterOwner()) or "none"
+            local matched = isSphere and key == explosionKey and parentKey == boltKey
+                and characterOwner == playerId and parentCharacterOwner == playerId
+            emit(isSphere and "FIRE_SPHERE_BEGIN" or "FIRE_BOLT_BEGIN",
+                "phase=script_post class=" .. path .. " source=" .. identity(object)
+                .. " row=" .. string.format("%q", key) .. " actor_owner=" .. identity(actorOwner)
+                .. " parent_row=" .. string.format("%q", parentKey)
+                .. " character_owner=" .. characterOwner .. " parent_character_owner=" .. parentCharacterOwner
+                .. " player=" .. playerId .. " matched=" .. tostring(matched))
+        end)
+    end
+
+    observe(spherePath, true)
+    assert(#hooks == 1, "exact sphere BeginPlay unavailable; fire warm-up then retry F4")
+    observe(boltPath, false)
+    assert(#hooks == 2, "exact Fire bolt BeginPlay unavailable")
+end
+
 local function start(requested)
     if mode then log("BUSY", "mode=" .. mode); return end
     cleanup()
@@ -202,9 +258,11 @@ local function start(requested)
     local run = generation
     mode = requested
     local ok, err = pcall(function()
-        if requested == "combat" then combat() else rest() end
+        if requested == "fire" then fire()
+        elseif requested == "combat" then combat()
+        else rest() end
         assert(#hooks > 0, "no compatible loaded observation points")
-        ExecuteInGameThreadWithDelay(requested == "combat" and 120000 or 90000, function()
+        ExecuteInGameThreadWithDelay(requested == "fire" and 45000 or requested == "combat" and 120000 or 90000, function()
             if generation == run then stop("deadline"); cleanup() end
         end)
     end)
@@ -262,7 +320,7 @@ local ok, err = pcall(function()
             log("BARE_KEY_UNAVAILABLE", "key=" .. name .. " reason=" .. tostring(reason):sub(1, 120))
         end
     end
-    registerBare("F4", function() start("combat") end)
+    registerBare("F4", function() start("fire") end)
     registerBare("F7", function() stop("user"); cleanup() end)
 
     -- One-shot independent scheduler check even if no key callback is delivered.
@@ -275,5 +333,5 @@ local ok, err = pcall(function()
         log("ENGINE_TICK_PING_ERROR", tostring(tickErr):sub(1, 180))
     end
 end)
-if ok then log("ARMED", "F4=combat F7=stop (see BARE_KEY_*); CtrlShiftF8=combat CtrlShiftF9=rest CtrlShiftF10=stop")
+if ok then log("ARMED", "F4=fire F7=stop (see BARE_KEY_*); CtrlShiftF8=combat CtrlShiftF9=rest CtrlShiftF10=stop")
 else log("UNAVAILABLE", tostring(err):sub(1, 180)) end
