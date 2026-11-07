@@ -1,5 +1,7 @@
 # Базовые источники урона посоха по стихиям
 
+**Назначение карты после 2026-11-07:** выбрать минимальный охват штатного множителя для **заметного ослабления всей базовой staff-атаки**. Идеальная одновременная per-hit оплата и строгое неизменение world/parts больше не требуются; при этом существенный Fire explosion и Ice damage pulse могут определять основную силу. Фактические Fire BeginPlay и ProjectileHitEvent подтверждены в [COMBAT_OBSERVATION_01.md](COMBAT_OBSERVATION_01.md), хотя ранние строки таблицы ниже отражают первоначально статический уровень доказательств. См. [REQUIREMENTS.md](REQUIREMENTS.md).
+
 **Область:** базовые атаки 1–3, их подтверждённые дочерние эффекты и точечная сверка вариантов `talent_e804`. Steam 1.09 / build 12996889, UE4.27, Win64. Использованы сохранённые cooked-таблицы, CUE4Parse bytecode, UHT и уже исследованная [нативная цепочка Astral](ASTRAL_NATIVE_HP_PATH.md). [Идентичность входов](../research/static-combat-01/EVIDENCE.json). Charged Rays, Fourth Quadrant, Judgment, switch и варианты модулей вне этой карты. **Production BLOCKED.**
 
 ## Карта источников
