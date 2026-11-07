@@ -4,7 +4,7 @@
 
 **Astral: обычный A/B — PASS, e804 — NOT TESTED. Production gate: BLOCKED.** [Astral Rate Probe 01](ASTRAL_RATE_PROBE_01.md) подтвердил, что post `ReceiveBeginPlay` может разово уменьшить `DamageRate` обычного Astral-болта с 0.90 до 0.45. На том же мобе штатный `ProjectileHitEvent.Damage` снизился с 59.85 до 29.925. Оба хука сняты, проба отключена.
 
-**Melee: CANDIDATE — LIVE EVIDENCE PENDING.** [Melee Contact 01](COMBAT_OBSERVATION_01.md#melee-contact-01--обычный-удар-кинжалами) переиспользует CombatObserver. Доставка события для кинжалов и кратность на один контакт требуют игрового доказательства.
+**Melee: PASS для наблюдаемого первого удара кинжалами.** [Melee Contact 01](COMBAT_OBSERVATION_01.md#результат-melee-contact-01) подтвердил источник, владельца и цель в `ProjectileHitEvent`. Промах дал 0 HIT, одиночная цель 1+1, группа 2+3. Повторов одной пары источник–цель в прогоне не было. До начисления остаются границы дедупликации, проверка враждебности и покрытие поглощённого контакта. Observer отключён.
 
 ## Принятые инженерные границы
 
