@@ -455,7 +455,7 @@ do
     t.emit(fireBegin, parameter(weakBolt))
     local sphere = t.fireSphere("WeakWriteErrorSphere", weakBolt)
     t.emit(fireSphereBegin, parameter(sphere))
-    assert(sphere.rate == 0.45)
+    assert(sphere.rate == string.unpack("f", string.pack("f", 0.45)))
     t.endStep()
     t.keys[7]()
 end
