@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MPL-2.0
--- Research only. F4=start, F6=arm one Astral attempt, F7=stop.
+-- Research only. F4=start, F7=stop, automatic debit on confirmed Astral BeginPlay.
 local prefix = "STAFF_RESERVE01"
 local assets = "/Game/MainContent/Act/Skill_BP/PlayerSkill_BP/"
 local astral = assets .. "hilda_staff_bolt_astral.hilda_staff_bolt_astral_C"
@@ -133,20 +133,38 @@ end
 local function astralBegin(pawn, context)
     local bolt = context:get()
     assert(exact(bolt, astral), "unexpected_astral_context")
+    -- The game's single first-attack fire object is the action boundary.
+    -- No extra user key is needed to permit a real shot.
     if not owned(bolt, pawn) then
-        assert(not session.armed, "astral_owner_mismatch")
+        log("SKIP", "reason=foreign_astral_owner")
         return
     end
-    assert(bolt.ProjectileDataName:ToString() == "hilda_staff_bolt_astral", "astral_row_mismatch")
-    local skill = StaticFindObject(GLOBAL):GetDoingSkill(pawn):ToString()
-    assert(skill == "hilda_staff_atk1" or skill == "hilda_staff_atk1_idle", "unsupported_astral_skill:" .. skill)
+    local row = bolt.ProjectileDataName:ToString()
+    if row ~= "hilda_staff_bolt_astral" then
+        log("SKIP", "reason=unsupported_astral_row row=" .. tostring(row))
+        return
+    end
     local sourceId = id(bolt)
-    assert(session.armed and not session.shots[sourceId], "extra_or_unarmed_astral_source")
-    session.armed = false
+    if session.shots[sourceId] then
+        log("SKIP", "reason=duplicate_source source=" .. sourceId)
+        return
+    end
+    local skill = StaticFindObject(GLOBAL):GetDoingSkill(pawn):ToString()
+    if skill ~= "hilda_staff_atk1" and skill ~= "hilda_staff_atk1_idle" then
+        if not session.skippedSkills[skill] then
+            session.skippedSkills[skill] = true
+            log("SKIP", "reason=unsupported_astral_skill skill=" .. skill)
+        end
+        return
+    end
     assert(field(bolt, "DamageRate", 0x2C4))
     assert(field(bolt, "Original Damage Rate"))
     local rate = get(bolt, "DamageRate")
-    assert(rate > 0 and get(bolt, "Original Damage Rate") == 0, "unsupported_rate_or_e804")
+    assert(rate > 0, "invalid_astral_rate")
+    if get(bolt, "Original Damage Rate") ~= 0 then
+        log("SKIP", "reason=unverified_e804 source=" .. sourceId)
+        return
+    end
     local before = session.reserve
     local effective = rate
     if before == 0 then
@@ -163,7 +181,7 @@ local function astralBegin(pawn, context)
     end
     local mode = before > 0 and "strong" or "weak"
     session.shots[sourceId] = mode
-    log("SHOT", "attempt=" .. session.attempt .. " skill=" .. skill .. " mode=" .. mode
+    log("SHOT", "skill=" .. skill .. " mode=" .. mode
         .. " before=" .. before .. " reserve=" .. session.reserve .. " rate=" .. rate
         .. " effective=" .. effective .. " source=" .. sourceId)
 end
@@ -270,19 +288,8 @@ local function start()
         cleanup()
         return
     end
-    session = {player = id(pawn), reserve = capacity, attempt = 0, shots = {}, contacts = {}}
+    session = {player = id(pawn), reserve = capacity, shots = {}, contacts = {}, skippedSkills = {}}
     log("START", "reserve=" .. capacity .. " hooks=" .. #hooks)
-end
-
-local function arm()
-    if not session then return end
-    if session.armed then
-        log("ATTEMPT_PENDING", "attempt=" .. session.attempt .. " reserve=" .. session.reserve)
-        return
-    end
-    session.attempt = session.attempt + 1
-    session.armed = true
-    log("ATTEMPT", "attempt=" .. session.attempt .. " reserve=" .. session.reserve)
 end
 
 local function stop()
@@ -311,12 +318,11 @@ local ok, err = pcall(function()
         "RegisterKeyBind", "IsKeyBindRegistered", "ExecuteInGameThread", "IsInGameThread"}) do
         assert(type(_G[name]) == "function", "missing_api:" .. name)
     end
-    for _, key in ipairs({Key.F4, Key.F6, Key.F7}) do
+    for _, key in ipairs({Key.F4, Key.F7}) do
         assert(not IsKeyBindRegistered(key), "key_collision")
     end
     bind(Key.F7, stop)
     bind(Key.F4, start)
-    bind(Key.F6, arm)
 end)
-if ok then log("LOADED", "F4=start F6=arm_one_Astral F7=stop")
+if ok then log("LOADED", "F4=start F7=stop automatic_astral_debit=true")
 else fail(err) end

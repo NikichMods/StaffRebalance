@@ -71,8 +71,8 @@ local function setup(options)
     e.StaticFindObject = function(name) return functions[name] end
     e.EngineTickAvailable = true
     e.EGameThreadMethod = {EngineTick = 1}
-    e.Key = {F4 = 4, F6 = 6, F7 = 7}
-    e.IsKeyBindRegistered = function(key) return options.collision and key == 6 or false end
+    e.Key = {F4 = 4, F7 = 7}
+    e.IsKeyBindRegistered = function(key) return options.collision and key == 4 or false end
     e.RegisterKeyBind = function(key, callback) keys[key] = callback end
     e.ExecuteInGameThread = function(callback, method) assert(method == 1); callback() end
     e.IsInGameThread = function() return not options.wrongThread end
@@ -110,7 +110,10 @@ local function setup(options)
             local _, count = table.concat(lines):gsub("STAFF_RESERVE01 " .. event .. " ", "")
             return count
         end,
-        bolt = function(name) return source(name, astral, "hilda_staff_bolt_astral") end,
+        bolt = function(name, owner) return source(name, astral, "hilda_staff_bolt_astral", owner) end,
+        otherBolt = function(name) return source(name, astral, "other_astral_key") end,
+        setSkill = function(value) options.skill = value end,
+        setSaved = function(value) options.saved = value end,
         blade = function(name, owner) return source(name, daggers, "hilda_dual_attack_astral", owner) end,
         emit = function(name, ...) hooks[name](...) end,
     }
@@ -118,7 +121,6 @@ end
 
 local function shot(test, name)
     local bolt = test.bolt(name)
-    test.keys[6]()
     test.emit(begin, parameter(bolt))
     return bolt
 end
@@ -138,9 +140,8 @@ for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     assert(not next(t.hooks))
     t.keys[4]()
     assert(t.has("START reserve=3 hooks=7"))
-    t.keys[6](); t.keys[6]()
-    assert(t.has("ATTEMPT_PENDING attempt=1 reserve=3") and t.count("SHOT") == 0)
-    t.emit(begin, parameter(t.bolt("One")))
+    assert(t.count("SHOT") == 0)
+    assert(shot(t, "One").rate == 0.875 and t.count("SHOT") == 1)
     assert(shot(t, "Two").rate == 0.875 and shot(t, "Three").rate == 0.875)
     assert(t.has("mode=strong before=1 reserve=0"))
     local weak = shot(t, "Four")
@@ -181,25 +182,44 @@ for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     t.keys[4](); assert(not next(t.hooks))
 end
 
-for _, case in ipairs({
-    {{skill = "hilda_staff_atk2"}, "unsupported_astral_skill"},
-    {{saved = 1}, "unsupported_rate_or_e804"},
-}) do
-    local t = setup(case[1])
+do
+    local t = setup({skill = "hilda_staff_atk2"})
     t.keys[4]()
     assert(shot(t, "Unsupported").rate == 0.875)
-    assert(t.count("SHOT") == 0 and t.has(case[2]))
+    assert(t.count("SHOT") == 0 and t.has("SKIP reason=unsupported_astral_skill"))
+    t.setSkill("hilda_staff_atk1")
+    assert(shot(t, "Supported").rate == 0.875)
+    assert(t.has("mode=strong before=3 reserve=2"))
+    t.keys[7]()
+end
+do
+    local t = setup({saved = 1})
+    t.keys[4]()
+    assert(shot(t, "e804").rate == 0.875)
+    assert(t.count("SHOT") == 0 and t.has("SKIP reason=unverified_e804"))
+    t.setSaved(0)
+    assert(shot(t, "Supported").rate == 0.875)
+    assert(t.has("mode=strong before=3 reserve=2"))
+    t.keys[7]()
 end
 
 for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     local t = setup({skill = skill})
     t.keys[4]()
-    assert(shot(t, "First").rate == 0.875)
-    assert(t.has("skill=" .. skill .. " mode=strong before=3 reserve=2"))
-    t.emit(begin, parameter(t.bolt("Extra")))
-    t.keys[6]()
-    t.emit(begin, parameter(t.bolt("Ignored")))
-    assert(t.count("SHOT") == 1 and t.has("extra_or_unarmed_astral_source"))
+    local first = t.bolt("First")
+    t.emit(begin, parameter(first))
+    assert(first.rate == 0.875 and t.has("skill=" .. skill .. " mode=strong before=3 reserve=2"))
+    t.emit(begin, parameter(first))
+    assert(t.count("SHOT") == 1 and t.has("SKIP reason=duplicate_source"))
+    assert(shot(t, "Second").rate == 0.875)
+    assert(t.count("SHOT") == 2 and t.has("mode=strong before=2 reserve=1"))
+    t.emit(begin, parameter(t.otherBolt("Unrelated")))
+    t.emit(begin, parameter(t.bolt("Foreign", object("OtherOwner", 88))))
+    assert(t.count("SHOT") == 2 and t.has("SKIP reason=foreign_astral_owner")
+        and t.has("SKIP reason=unsupported_astral_row"))
+    assert(shot(t, "Third").rate == 0.875)
+    assert(shot(t, "Fourth").rate == 0.4375)
+    assert(t.count("SHOT") == 4 and t.has("mode=weak before=0 reserve=0"))
     t.keys[7](); assert(not next(t.hooks))
 end
 
