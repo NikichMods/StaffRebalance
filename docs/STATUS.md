@@ -1,6 +1,6 @@
 # StaffRebalance — текущий статус
 
-**Dev Prototype 01: подготовлен dev-кандидат оплаты Astral atk2/atk3 по штатному Begin/End.** Исходный research baseline сохранён; новые исходник и [dev-тесты](../dev/StaffRebalanceDev/tests.lua) находятся только в `dev/reserve-core-01`. [Lua 5.4 CI](https://github.com/NikichMods/StaffRebalance/actions/runs/42399844375): **PASS** (syntax + mock) для исходников из `fe5c745`; новая dev-установка и игровое поведение ещё **NOT TESTED**. **Production gate — BLOCKED.**
+**Dev Prototype 01: интеграционный игровой PASS для обычного Astral-комбо, StaffRebalanceDev отключён.** [Прогон](DEV_PROTOTYPE_01.md#игровой-интеграционный-pass-astral-atk2atk3--2026-11-07) подтвердил один дебет на сильный шаг, единый режим 2/3 болтов при переходе резерва в ноль, melee-пополнение и снятие семи script hooks и двух native пар. **Production gate — BLOCKED.**
 
 **Reserve Slice 01: узкий игровой цикл PASS, срез отключён.** [Прогон](RESERVE_SLICE_01.md#игровой-pass-автоматического-среза--2026-11-07) подтвердил расход 3 → 0, 29,925 у слабого Astral и 59,85 после melee-пополнения на том же мобе. Выход из меню сохранил остаток, отдых вернул полный запас. Все семь хуков сняты.
 
