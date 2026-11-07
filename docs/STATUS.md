@@ -27,7 +27,7 @@
 
 ## Следующий узкий шаг
 
-**Astral 1–3: интеграционный игровой PASS. Fire explosion A/B и Fire action/parent read-only PASS.** [Dev-кандидат Fire](DEV_PROTOTYPE_01.md#dev-кандидат-fire-123-через-родительский-болт--2026-11-08) теперь использует тот же reserve, один debit при exact Fire-bolt BeginPlay и передачу режима дочерней sphere по parent независимо от текущего skill. **Lua CI и игровая интеграция кандидата пока NOT TESTED; production BLOCKED.** Сначала mock/CI, затем один узкий live-прогон без активного e804; не объединять с другими стихиями, melee/HUD и save/load.
+**Astral 1–3: интеграционный игровой PASS. Fire explosion A/B и Fire action/parent read-only PASS.** [Dev-кандидат Fire](DEV_PROTOTYPE_01.md#dev-кандидат-fire-123-через-родительский-болт--2026-11-08) теперь использует тот же reserve, один debit при exact Fire-bolt BeginPlay и передачу режима дочерней sphere по parent независимо от текущего skill. **Lua 5.4 CI PASS** ([run 42420482967](https://github.com/NikichMods/StaffRebalance/actions/runs/42420482967), source `3c1ecdc`); **игровая интеграция этого кандидата NOT TESTED, production BLOCKED.** Сначала mock/CI, затем один узкий live-прогон без активного e804; не объединять с другими стихиями, melee/HUD и save/load.
 
 Независимая проверка коэффициента Astral с талантом `e804` остаётся [NOT TESTED](ASTRAL_RATE_PROBE_01.md); выполнить, когда талант доступен в штатном сохранении. Melee, Fire и HUD не объединять с текущим шагом.
 
