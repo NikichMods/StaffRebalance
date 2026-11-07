@@ -71,8 +71,10 @@ local function setup(options)
     reflected("/Script/Genesis.BaseProjectile:GetCharacterOwner", 0x400, {result})
     reflected("/Script/Engine.Actor:GetOwner", 0x400, {result})
     reflected(begin, 0)
-    reflected(fireBegin, 0)
-    reflected(fireSphereBegin, 0)
+    if not options.missingFire then
+        reflected(fireBegin, 0)
+        reflected(fireSphereBegin, 0)
+    end
     reflected(nativeBegin, 0x400)
     reflected(nativeEnd, 0x400)
     reflected(hit, 0, {
@@ -352,6 +354,16 @@ do
     t.keys[7]()
 end
 -- Fire changes stay isolated in these dev-only tests. Real UE4SS integration is a separate gate.
+do
+    local t = setup({missingFire = true})
+    t.keys[4]()
+    assert(t.has("FIRE_UNAVAILABLE reason=missing:"))
+    assert(t.has("START reserve=3 hooks=9 fire=unavailable"))
+    assert(shot(t, "AstralWithFireClassUnloaded").rate == 0.875)
+    assert(t.has("mode=strong before=3 reserve=2"))
+    t.keys[7]()
+    assert(not next(t.hooks))
+end
 do
     local t = setup()
     t.keys[4]()

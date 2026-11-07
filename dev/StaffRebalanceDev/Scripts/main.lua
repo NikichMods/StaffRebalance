@@ -410,7 +410,6 @@ local function start()
         {"/Script/Genesis.GameGlobal:GetPlayerCharacter", true, true, "ObjectProperty:ReturnValue"},
         {"/Script/Genesis.GameGlobal:GetDoingSkill", true, true, "ObjectProperty:Character,NameProperty:ReturnValue"},
         {"/Script/Genesis.BaseProjectile:GetCharacterOwner", true, false, "ObjectProperty:ReturnValue"},
-        {"/Script/Engine.Actor:GetOwner", true, false, "ObjectProperty:ReturnValue"},
         {animSkill .. "BeginDoSkill", true, false, ""},
         {animSkill .. "EndDoSkill", true, false, ""},
     }) do
@@ -431,8 +430,6 @@ local function start()
     end
     local routes = {
         {astral .. ":ReceiveBeginPlay", "", astralBegin},
-        {fireBolt .. ":ReceiveBeginPlay", "", fireBegin},
-        {fireSphere .. ":ReceiveBeginPlay", "", fireExplosion},
         {mobHit, "ObjectProperty:projectile@0,ObjectProperty:hitcomponent@8,StructProperty:hitposition@16,FloatProperty:damage@28", hit, false, true},
         {conduit .. "Interact_Rest", "", requestRest},
         {conduit .. "Interact_EndUse", "", endUse},
@@ -443,6 +440,25 @@ local function start()
     for _, route in ipairs(routes) do
         local ok, reason = check(route[1], false, route[4] == true, route[2], route[5])
         if not ok then log("UNAVAILABLE", reason); return end
+    end
+    -- Fire classes can remain unloaded until the first Fire shot.
+    -- Treat Fire hooks as one optional pair: never block proven Astral on their absence.
+    local fireReady = true
+    for _, spec in ipairs({
+        {"/Script/Engine.Actor:GetOwner", true, false, "ObjectProperty:ReturnValue"},
+        {fireBolt .. ":ReceiveBeginPlay", false, false, ""},
+        {fireSphere .. ":ReceiveBeginPlay", false, false, ""},
+    }) do
+        local ready, reason = check(table.unpack(spec))
+        if not ready then
+            fireReady = false
+            log("FIRE_UNAVAILABLE", "reason=" .. reason .. " warmup_fire_before_F4=true")
+            break
+        end
+    end
+    if fireReady then
+        routes[#routes + 1] = {fireBolt .. ":ReceiveBeginPlay", "", fireBegin}
+        routes[#routes + 1] = {fireSphere .. ":ReceiveBeginPlay", "", fireExplosion}
     end
     local ok, err = pcall(function()
         for _, route in ipairs(routes) do attach(route[1], route[3]) end
@@ -456,7 +472,8 @@ local function start()
     end
     session = {player = id(pawn), anim = id(anim), reserve = capacity,
         shots = {}, fireParents = {}, contacts = {}, skippedSkills = {}}
-    log("START", "reserve=" .. capacity .. " hooks=" .. #hooks)
+    log("START", "reserve=" .. capacity .. " hooks=" .. #hooks
+        .. " fire=" .. (fireReady and "ready" or "unavailable"))
 end
 
 local function stop()
