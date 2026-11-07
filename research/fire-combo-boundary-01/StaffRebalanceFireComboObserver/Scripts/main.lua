@@ -190,7 +190,7 @@ local function bind(key, action)
 end
 
 assert(EngineTickAvailable == true and type(EGameThreadMethod.EngineTick) == "number", "EngineTick required")
-assert(not IsKeyBindRegistered(Key.F4) and not IsKeyBindRegistered(Key.F7), "key collision")
+assert(not IsKeyBindRegistered(Key.F5) and not IsKeyBindRegistered(Key.F7), "key collision")
 bind(Key.F7, function() stop("user") end)
-bind(Key.F4, startOrMark)
-log("ARMED", "F4=start_or_mark F7=stop")
+bind(Key.F5, startOrMark)
+log("ARMED", "F5=start_or_mark F7=stop")
