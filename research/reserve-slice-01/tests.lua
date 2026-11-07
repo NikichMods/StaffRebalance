@@ -133,8 +133,8 @@ local function contact(test, blade, enemy)
     test.emit(hit, enemy, parameter(blade), nil, nil, parameter(0))
 end
 
-do
-    local t = setup()
+for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
+    local t = setup({skill = skill})
     assert(not next(t.hooks))
     t.keys[4]()
     assert(t.has("START reserve=3 hooks=7"))
@@ -191,10 +191,11 @@ for _, case in ipairs({
     assert(t.count("SHOT") == 0 and t.has(case[2]))
 end
 
-do
-    local t = setup()
+for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
+    local t = setup({skill = skill})
     t.keys[4]()
-    shot(t, "First")
+    assert(shot(t, "First").rate == 0.875)
+    assert(t.has("skill=" .. skill .. " mode=strong before=3 reserve=2"))
     t.emit(begin, parameter(t.bolt("Extra")))
     t.keys[6]()
     t.emit(begin, parameter(t.bolt("Ignored")))

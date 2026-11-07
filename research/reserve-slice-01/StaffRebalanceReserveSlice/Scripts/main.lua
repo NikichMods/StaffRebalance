@@ -139,7 +139,7 @@ local function astralBegin(pawn, context)
     end
     assert(bolt.ProjectileDataName:ToString() == "hilda_staff_bolt_astral", "astral_row_mismatch")
     local skill = StaticFindObject(GLOBAL):GetDoingSkill(pawn):ToString()
-    assert(skill == "hilda_staff_atk1", "unsupported_astral_skill:" .. skill)
+    assert(skill == "hilda_staff_atk1" or skill == "hilda_staff_atk1_idle", "unsupported_astral_skill:" .. skill)
     local sourceId = id(bolt)
     assert(session.armed and not session.shots[sourceId], "extra_or_unarmed_astral_source")
     session.armed = false
