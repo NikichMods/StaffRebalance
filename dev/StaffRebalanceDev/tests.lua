@@ -391,7 +391,7 @@ do
     assert(t.count("FIRE_BOLT") == 5)
     local weakSphere2 = t.fireSphere("WeakFireSphere2", nextBolt)
     t.emit(fireSphereBegin, parameter(weakSphere2))
-    assert(weakSphere2.rate == 0.45)
+    assert(weakSphere2.rate == string.unpack("f", string.pack("f", 0.45)))
     t.endStep()
     contact(t, t.blade("FireRestore1"), target)
     t.beginStep("hilda_staff_atk3_fire")
