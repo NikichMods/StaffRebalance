@@ -27,7 +27,7 @@
 
 ## Следующий узкий шаг
 
-**Astral-комбо 2/3: gate BLOCKED.** Следующая проверка — локальная read-only корреляция native `BaseCharacterAnimInstance:BeginDoSkill/EndDoSkill` с первым и последующими `ReceiveBeginPlay` для каждого выполнения `hilda_staff_atk2/atk3`. Доставка native skill hooks на `hilda_staff_atk1_idle` уже подтверждена в [Asterigos-Research](https://github.com/NikichMods/Asterigos-Research/blob/main/docs/VERIFIED_RUNTIME.md#cudgel-socket-transition-and-skill-hook-delivery--observed-2026-11-06), но **граница именно atk2/atk3 не доказана**. Способ, проверка и ограничения записаны в [DEV_PROTOTYPE_01.md](DEV_PROTOTYPE_01.md#проверка-штатной-границы-astral-комбо--2026-11-07). До этого dev-код не расширять по одному bolt.
+**Astral-комбо 2/3: read-only PASS.** [Прогон](ASTRAL_COMBO_BOUNDARY_01.md#игровой-результат-2026-11-07) связал по 2/3 болта с отдельными исполнениями между `BeginDoSkill` post и соответствующим `EndDoSkill`. Повтор и остановка после второго шага различались по событиям. Механика резерва для atk2/atk3 ещё не реализована и не проверена. Production gate остаётся BLOCKED.
 
 Независимая проверка коэффициента Astral с талантом `e804` остаётся [NOT TESTED](ASTRAL_RATE_PROBE_01.md); выполнить, когда талант доступен в штатном сохранении. Melee, Fire и HUD не объединять с текущим шагом.
 
