@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MPL-2.0
--- Research only. F4=start, F7=stop, automatic debit on confirmed Astral BeginPlay.
+-- Dev candidate, not production. F4=start, F7=stop. Astral 2/3 action boundary is native skill Begin/End.
 local prefix = "STAFF_RESERVE01"
 local assets = "/Game/MainContent/Act/Skill_BP/PlayerSkill_BP/"
 local astral = assets .. "hilda_staff_bolt_astral.hilda_staff_bolt_astral_C"
@@ -10,6 +10,7 @@ local conduit = "/Game/MainContent/Act/Scene_BP/BaseScene_BP/BaseSavePoint_BP.Ba
 local recovery = root .. "MainGameInstance_BP.MainGameInstance_BP_C:RecoverPlayerAndScene"
 local recoveryContext = root .. "GameGlobalBlueprintLibrary.GameGlobalBlueprintLibrary_C:RecoverPlayerAndScene"
 local GLOBAL = "/Script/Genesis.Default__GameGlobal"
+local animSkill = "/Script/Genesis.BaseCharacterAnimInstance:"
 local capacity = 3
 local hooks = {}
 local session, closed
@@ -110,8 +111,8 @@ local function cleanup()
     hooks = remaining
 end
 
-local function attach(path, callback)
-    local a, b = RegisterHook(path, function(...)
+local function guarded(callback)
+    return function(...)
         if not session then return end
         local ok, err = pcall(function(...)
             assert(IsInGameThread(), "not_game_thread")
@@ -120,9 +121,42 @@ local function attach(path, callback)
             callback(pawn, ...)
         end, ...)
         if not ok then fail(err) end
-    end)
+    end
+end
+
+local function attach(path, callback)
+    local a, b = RegisterHook(path, guarded(callback))
     hooks[#hooks + 1] = {path = path, a = a, b = b}
     assert(type(a) == "number" and a > 0 and a == b, "unexpected_hook_ids:" .. path)
+end
+
+local function attachNative(path, pre, post)
+    local a, b = RegisterHook(path, guarded(pre), guarded(post))
+    hooks[#hooks + 1] = {path = path, a = a, b = b}
+    assert(math.type(a) == "integer" and math.type(b) == "integer"
+        and a > 0 and b > 0 and a ~= b, "unexpected_native_hook_ids:" .. path)
+end
+
+local function comboBegin(_, context)
+    local anim = context:get()
+    if not valid(anim) or id(anim) ~= session.anim then return end
+    local skill = anim:GetDoingSkill():ToString()
+    -- An independent Begin replaces the prior action, including an interrupted one.
+    session.combo = nil
+    if skill == "hilda_staff_atk2" or skill == "hilda_staff_atk3" then
+        session.combo = {skill = skill}
+        log("COMBO_BEGIN", "skill=" .. skill)
+    end
+end
+
+local function comboEnd(_, context)
+    local anim = context:get()
+    if not session.combo or not valid(anim) or id(anim) ~= session.anim then return end
+    local skill = anim:GetDoingSkill():ToString()
+    if skill == session.combo.skill then
+        log("COMBO_END", "skill=" .. skill .. " mode=" .. tostring(session.combo.mode or "no_bolt"))
+        session.combo = nil
+    end
 end
 
 local function owned(source, pawn)
@@ -133,8 +167,7 @@ end
 local function astralBegin(pawn, context)
     local bolt = context:get()
     assert(exact(bolt, astral), "unexpected_astral_context")
-    -- The game's single first-attack fire object is the action boundary.
-    -- No extra user key is needed to permit a real shot.
+    -- First-step bolts are one per action. Steps 2/3 use native Begin/End and the first real bolt.
     if not owned(bolt, pawn) then
         log("SKIP", "reason=foreign_astral_owner")
         return
@@ -150,7 +183,23 @@ local function astralBegin(pawn, context)
         return
     end
     local skill = StaticFindObject(GLOBAL):GetDoingSkill(pawn):ToString()
-    if skill ~= "hilda_staff_atk1" and skill ~= "hilda_staff_atk1_idle" then
+    local combo
+    if skill == "hilda_staff_atk2" or skill == "hilda_staff_atk3" then
+        combo = session.combo
+        local mesh = pawn.Mesh
+        local anim = valid(mesh) and mesh:GetAnimInstance()
+        if not combo or combo.skill ~= skill or not valid(anim) or id(anim) ~= session.anim then
+            if not session.skippedSkills[skill] then
+                session.skippedSkills[skill] = true
+                log("SKIP", "reason=unverified_combo_boundary skill=" .. skill)
+            end
+            return
+        end
+        if combo.mode == "skip_e804" then
+            log("SKIP", "reason=unverified_e804_combo source=" .. sourceId)
+            return
+        end
+    elseif skill ~= "hilda_staff_atk1" and skill ~= "hilda_staff_atk1_idle" then
         if not session.skippedSkills[skill] then
             session.skippedSkills[skill] = true
             log("SKIP", "reason=unsupported_astral_skill skill=" .. skill)
@@ -162,12 +211,15 @@ local function astralBegin(pawn, context)
     local rate = get(bolt, "DamageRate")
     assert(rate > 0, "invalid_astral_rate")
     if get(bolt, "Original Damage Rate") ~= 0 then
+        if combo and not combo.mode then combo.mode = "skip_e804" end
         log("SKIP", "reason=unverified_e804 source=" .. sourceId)
         return
     end
     local before = session.reserve
+    local first = not combo or not combo.mode
+    local mode = (combo and combo.mode) or (before > 0 and "strong" or "weak")
     local effective = rate
-    if before == 0 then
+    if mode == "weak" then
         effective = string.unpack("f", string.pack("f", rate * 0.5))
         assert(finite(effective) and effective > 0 and effective < rate, "invalid_weak_rate")
         local ok, err = pcall(write, bolt, "DamageRate", effective)
@@ -176,14 +228,14 @@ local function astralBegin(pawn, context)
             log(restored and "ROLLBACK_OK" or "ROLLBACK_FAILED", "source=" .. sourceId)
             error(err)
         end
-    else
-        session.reserve = before - 1
     end
-    local mode = before > 0 and "strong" or "weak"
+    local debit = (first and mode == "strong") and 1 or 0
+    if debit == 1 then session.reserve = before - 1 end
+    if combo and first then combo.mode = mode end
     session.shots[sourceId] = mode
     log("SHOT", "skill=" .. skill .. " mode=" .. mode
         .. " before=" .. before .. " reserve=" .. session.reserve .. " rate=" .. rate
-        .. " effective=" .. effective .. " source=" .. sourceId)
+        .. " effective=" .. effective .. " debit=" .. debit .. " source=" .. sourceId)
 end
 
 local function hit(pawn, context, sourceParam, _component, _position, damageParam)
@@ -261,12 +313,24 @@ local function start()
         {"/Script/Genesis.GameGlobal:GetPlayerCharacter", true, true, "ObjectProperty:ReturnValue"},
         {"/Script/Genesis.GameGlobal:GetDoingSkill", true, true, "ObjectProperty:Character,NameProperty:ReturnValue"},
         {"/Script/Genesis.BaseProjectile:GetCharacterOwner", true, false, "ObjectProperty:ReturnValue"},
+        {animSkill .. "BeginDoSkill", true, false, ""},
+        {animSkill .. "EndDoSkill", true, false, ""},
     }) do
         local ok, reason = check(table.unpack(spec))
         if not ok then log("UNAVAILABLE", reason); return end
     end
     local pawn, problem = player()
     if not pawn then log("UNAVAILABLE", problem); return end
+    local mesh = pawn.Mesh
+    if not valid(mesh) or not valid(mesh:GetOwner()) or id(mesh:GetOwner()) ~= id(pawn) then
+        log("UNAVAILABLE", "invalid_hilda_mesh")
+        return
+    end
+    local anim = mesh:GetAnimInstance()
+    if not valid(anim) or not anim:GetClass():GetFullName():match("%.hilda_AnimBP_C$") then
+        log("UNAVAILABLE", "invalid_hilda_anim")
+        return
+    end
     local routes = {
         {astral .. ":ReceiveBeginPlay", "", astralBegin},
         {mobHit, "ObjectProperty:projectile@0,ObjectProperty:hitcomponent@8,StructProperty:hitposition@16,FloatProperty:damage@28", hit, false, true},
@@ -282,13 +346,16 @@ local function start()
     end
     local ok, err = pcall(function()
         for _, route in ipairs(routes) do attach(route[1], route[3]) end
+        attachNative(animSkill .. "BeginDoSkill", function() end, comboBegin)
+        attachNative(animSkill .. "EndDoSkill", comboEnd, function() end)
     end)
     if not ok then
         fail(err)
         cleanup()
         return
     end
-    session = {player = id(pawn), reserve = capacity, shots = {}, contacts = {}, skippedSkills = {}}
+    session = {player = id(pawn), anim = id(anim), reserve = capacity,
+        shots = {}, contacts = {}, skippedSkills = {}}
     log("START", "reserve=" .. capacity .. " hooks=" .. #hooks)
 end
 
@@ -324,5 +391,5 @@ local ok, err = pcall(function()
     bind(Key.F7, stop)
     bind(Key.F4, start)
 end)
-if ok then log("LOADED", "F4=start F7=stop automatic_astral_debit=true")
+if ok then log("LOADED", "F4=start F7=stop astral_atk2_atk3_action_debit=true")
 else fail(err) end
