@@ -27,7 +27,7 @@
 
 ## Следующий узкий шаг
 
-**Astral-комбо 1–3: интеграционный игровой PASS. Fire explosion: A/B PASS.** [Fire rate](FIRE_RATE_PROBE_01.md#игровой-результат-2026-11-08) подтвердил `DamageRate` у самой сферы и изменение уведомлённого Damage 90,72 → 45,36 на том же мобе; probe отключён. **Fire 1/2/3: read-only PASS.** [Прогон](FIRE_COMBO_BOUNDARY_01.md#игровой-результат-2026-11-08) связал девять исполнений с девятью основными болтами и их сферами, включая взрыв первого шага после начала второго. Проба отключена. Dev-интеграция Fire ещё не выполнялась. Production gate — BLOCKED.
+**Astral 1–3: интеграционный игровой PASS. Fire explosion A/B и Fire action/parent read-only PASS.** [Dev-кандидат Fire](DEV_PROTOTYPE_01.md#dev-кандидат-fire-123-через-родительский-болт--2026-11-08) теперь использует тот же reserve, один debit при exact Fire-bolt BeginPlay и передачу режима дочерней sphere по parent независимо от текущего skill. **Lua CI и игровая интеграция кандидата пока NOT TESTED; production BLOCKED.** Сначала mock/CI, затем один узкий live-прогон без активного e804; не объединять с другими стихиями, melee/HUD и save/load.
 
 Независимая проверка коэффициента Astral с талантом `e804` остаётся [NOT TESTED](ASTRAL_RATE_PROBE_01.md); выполнить, когда талант доступен в штатном сохранении. Melee, Fire и HUD не объединять с текущим шагом.
 

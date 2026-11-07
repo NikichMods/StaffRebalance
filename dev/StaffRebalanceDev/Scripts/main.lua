@@ -1,8 +1,16 @@
 -- SPDX-License-Identifier: MPL-2.0
--- Dev candidate, not production. F4=start, F7=stop. Astral 2/3 action boundary is native skill Begin/End.
+-- Dev candidate, not production. F4=start, F7=stop. Astral/Fire basic actions share the reserve.
 local prefix = "STAFF_RESERVE01"
 local assets = "/Game/MainContent/Act/Skill_BP/PlayerSkill_BP/"
 local astral = assets .. "hilda_staff_bolt_astral.hilda_staff_bolt_astral_C"
+local fireBolt = assets .. "hilda_staff_bolt_fire.hilda_staff_bolt_fire_C"
+local fireSphere = "/Game/MainContent/Act/Skill_BP/CommonSkill_BP/sphere_200.sphere_200_C"
+local fireSkills = {
+    hilda_staff_atk1_idle_fire = true,
+    hilda_staff_atk1_fire = true,
+    hilda_staff_atk2_fire = true,
+    hilda_staff_atk3_fire = true,
+}
 local daggers = assets .. "hilda_dual_atk.hilda_dual_atk_C"
 local root = "/Game/MainContent/Template/BaseBlueprint/"
 local mobHit = root .. "BaseAICharacter_Mob_BP.BaseAICharacter_Mob_BP_C:ProjectileHitEvent"
@@ -143,7 +151,7 @@ local function comboBegin(_, context)
     local skill = anim:GetDoingSkill():ToString()
     -- An independent Begin replaces the prior action, including an interrupted one.
     session.combo = nil
-    if skill == "hilda_staff_atk2" or skill == "hilda_staff_atk3" then
+    if skill == "hilda_staff_atk2" or skill == "hilda_staff_atk3" or fireSkills[skill] then
         session.combo = {skill = skill}
         log("COMBO_BEGIN", "skill=" .. skill)
     end
@@ -238,6 +246,85 @@ local function astralBegin(pawn, context)
         .. " effective=" .. effective .. " debit=" .. debit .. " source=" .. sourceId)
 end
 
+local function fireBegin(pawn, context)
+    local bolt = context:get()
+    assert(exact(bolt, fireBolt), "unexpected_fire_bolt_context")
+    local sourceId = id(bolt)
+    -- Duplicate callbacks must not discard a still-pending child mode.
+    if session.combo and session.combo.fireSource == sourceId then
+        log("SKIP", "reason=duplicate_fire_bolt source=" .. sourceId)
+        return
+    end
+    -- A newly observed, unsupported use must not inherit an old actor address.
+    session.fireParents[sourceId] = nil
+    if bolt.ProjectileDataName:ToString() ~= "hilda_staff_bolt_fire" or not owned(bolt, pawn) then
+        log("SKIP", "reason=foreign_or_unsupported_fire_bolt source=" .. sourceId)
+        return
+    end
+    local skill = StaticFindObject(GLOBAL):GetDoingSkill(pawn):ToString()
+    if not fireSkills[skill] then
+        log("SKIP", "reason=unsupported_fire_skill skill=" .. skill)
+        return
+    end
+    local combo = session.combo
+    local mesh = pawn.Mesh
+    local anim = valid(mesh) and mesh:GetAnimInstance()
+    if not combo or combo.skill ~= skill or combo.mode or not valid(anim) or id(anim) ~= session.anim then
+        log("SKIP", "reason=unverified_fire_action skill=" .. skill)
+        return
+    end
+    -- Exactly one base Fire bolt was observed per execution; debit at its BeginPlay.
+    local before = session.reserve
+    local mode = before > 0 and "strong" or "weak"
+    session.fireParents[sourceId] = mode
+    combo.mode, combo.fireSource = mode, sourceId
+    if mode == "strong" then session.reserve = before - 1 end
+    log("FIRE_BOLT", "skill=" .. skill .. " mode=" .. mode .. " before=" .. before
+        .. " reserve=" .. session.reserve .. " debit=" .. (mode == "strong" and 1 or 0)
+        .. " source=" .. sourceId)
+end
+
+local function fireExplosion(pawn, context)
+    local sphere = context:get()
+    assert(exact(sphere, fireSphere), "unexpected_fire_sphere_context")
+    if sphere.ProjectileDataName:ToString() ~= "hilda_staff_bolt_fire_explosion" then return end
+    local parent = sphere:GetOwner()
+    if not exact(parent, fireBolt) or parent.ProjectileDataName:ToString() ~= "hilda_staff_bolt_fire"
+        or not owned(sphere, pawn) or not owned(parent, pawn) then
+        log("SKIP", "reason=foreign_fire_explosion")
+        return
+    end
+    local sourceId, parentId = id(sphere), id(parent)
+    if session.shots[sourceId] then
+        log("SKIP", "reason=duplicate_fire_explosion source=" .. sourceId)
+        return
+    end
+    local mode = session.fireParents[parentId]
+    if not mode then
+        log("SKIP", "reason=unmatched_fire_parent parent=" .. parentId)
+        return
+    end
+    assert(field(sphere, "DamageRate", 0x2C4))
+    local rate = get(sphere, "DamageRate")
+    assert(rate > 0, "invalid_fire_explosion_rate")
+    local effective = rate
+    if mode == "weak" then
+        effective = string.unpack("f", string.pack("f", rate * 0.5))
+        assert(finite(effective) and effective > 0 and effective < rate, "invalid_weak_fire_rate")
+        local ok, err = pcall(write, sphere, "DamageRate", effective)
+        if not ok then
+            local restored = pcall(write, sphere, "DamageRate", rate)
+            log(restored and "ROLLBACK_OK" or "ROLLBACK_FAILED", "source=" .. sourceId)
+            error(err)
+        end
+    end
+    -- The observed basic Fire path produces one sphere per bolt.
+    session.fireParents[parentId] = nil
+    session.shots[sourceId] = "fire_" .. mode
+    log("FIRE_SPHERE", "mode=" .. mode .. " source=" .. sourceId .. " parent=" .. parentId
+        .. " rate=" .. rate .. " effective=" .. effective)
+end
+
 local function hit(pawn, context, sourceParam, _component, _position, damageParam)
     local target, source = context:get(), sourceParam:get()
     if not valid(target) or not valid(source) then return end
@@ -249,6 +336,16 @@ local function hit(pawn, context, sourceParam, _component, _position, damagePara
             assert(finite(damage), "invalid_astral_notification")
             log("ASTRAL_HIT", "mode=" .. mode .. " notified_damage=" .. damage
                 .. " rate=" .. get(source, "DamageRate") .. " source=" .. sourceId .. " target=" .. id(target))
+        end
+        return
+    end
+    if exact(source, fireSphere) then
+        local mode = session.shots[id(source)]
+        if mode == "fire_strong" or mode == "fire_weak" then
+            local damage = damageParam:get()
+            assert(finite(damage), "invalid_fire_notification")
+            log("FIRE_HIT", "mode=" .. mode .. " notified_damage=" .. damage
+                .. " rate=" .. get(source, "DamageRate") .. " source=" .. id(source) .. " target=" .. id(target))
         end
         return
     end
@@ -313,6 +410,7 @@ local function start()
         {"/Script/Genesis.GameGlobal:GetPlayerCharacter", true, true, "ObjectProperty:ReturnValue"},
         {"/Script/Genesis.GameGlobal:GetDoingSkill", true, true, "ObjectProperty:Character,NameProperty:ReturnValue"},
         {"/Script/Genesis.BaseProjectile:GetCharacterOwner", true, false, "ObjectProperty:ReturnValue"},
+        {"/Script/Engine.Actor:GetOwner", true, false, "ObjectProperty:ReturnValue"},
         {animSkill .. "BeginDoSkill", true, false, ""},
         {animSkill .. "EndDoSkill", true, false, ""},
     }) do
@@ -333,6 +431,8 @@ local function start()
     end
     local routes = {
         {astral .. ":ReceiveBeginPlay", "", astralBegin},
+        {fireBolt .. ":ReceiveBeginPlay", "", fireBegin},
+        {fireSphere .. ":ReceiveBeginPlay", "", fireExplosion},
         {mobHit, "ObjectProperty:projectile@0,ObjectProperty:hitcomponent@8,StructProperty:hitposition@16,FloatProperty:damage@28", hit, false, true},
         {conduit .. "Interact_Rest", "", requestRest},
         {conduit .. "Interact_EndUse", "", endUse},
@@ -355,7 +455,7 @@ local function start()
         return
     end
     session = {player = id(pawn), anim = id(anim), reserve = capacity,
-        shots = {}, contacts = {}, skippedSkills = {}}
+        shots = {}, fireParents = {}, contacts = {}, skippedSkills = {}}
     log("START", "reserve=" .. capacity .. " hooks=" .. #hooks)
 end
 
@@ -391,5 +491,5 @@ local ok, err = pcall(function()
     bind(Key.F7, stop)
     bind(Key.F4, start)
 end)
-if ok then log("LOADED", "F4=start F7=stop astral_atk2_atk3_action_debit=true")
+if ok then log("LOADED", "F4=start F7=stop astral_fire_basic_shared_reserve=true")
 else fail(err) end

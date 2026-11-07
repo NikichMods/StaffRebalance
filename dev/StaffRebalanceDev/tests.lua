@@ -3,6 +3,10 @@
 local path = assert(arg[1])
 local assets = "/Game/MainContent/Act/Skill_BP/PlayerSkill_BP/"
 local astral = assets .. "hilda_staff_bolt_astral.hilda_staff_bolt_astral_C"
+local fireBolt = assets .. "hilda_staff_bolt_fire.hilda_staff_bolt_fire_C"
+local fireSphere = "/Game/MainContent/Act/Skill_BP/CommonSkill_BP/sphere_200.sphere_200_C"
+local fireBegin = fireBolt .. ":ReceiveBeginPlay"
+local fireSphereBegin = fireSphere .. ":ReceiveBeginPlay"
 local daggers = assets .. "hilda_dual_atk.hilda_dual_atk_C"
 local root = "/Game/MainContent/Template/BaseBlueprint/"
 local hit = root .. "BaseAICharacter_Mob_BP.BaseAICharacter_Mob_BP_C:ProjectileHitEvent"
@@ -65,7 +69,10 @@ local function setup(options)
     reflected("/Script/Genesis.GameGlobal:GetDoingSkill", 0x2400,
         {property("ObjectProperty Owner:Character"), property("NameProperty Owner:ReturnValue")})
     reflected("/Script/Genesis.BaseProjectile:GetCharacterOwner", 0x400, {result})
+    reflected("/Script/Engine.Actor:GetOwner", 0x400, {result})
     reflected(begin, 0)
+    reflected(fireBegin, 0)
+    reflected(fireSphereBegin, 0)
     reflected(nativeBegin, 0x400)
     reflected(nativeEnd, 0x400)
     reflected(hit, 0, {
@@ -96,16 +103,17 @@ local function setup(options)
     e.UnregisterHook = function(name) hooks[name] = nil end
     e.print = function(line) lines[#lines + 1] = line end
 
-    local function source(name, classPath, key, owner)
+    local function source(name, classPath, key, owner, initialRate)
         local s = object(name, 20, nil, classPath)
         s.ProjectileDataName = {ToString = function() return key end}
         s.GetCharacterOwner = function() return owner or pawn end
-        s.rate = 0.875
+        s.rate = initialRate or 0.875
+        s.initial = s.rate
         s.GetPropertyValue = function(_, field) return field == "DamageRate" and s.rate or options.saved or 0 end
         s.SetPropertyValue = function(_, field, value)
             assert(field == "DamageRate")
             s.rate = value
-            if options.writeError and value ~= 0.875 then error("partial write") end
+            if options.writeError and value ~= s.initial then error("partial write") end
         end
         s.Reflection = function()
             return {GetProperty = function(_, field) return property("FloatProperty Owner:" .. field, 0x2C4) end}
@@ -127,6 +135,14 @@ local function setup(options)
         setSkill = function(value) options.skill = value end,
         setSaved = function(value) options.saved = value end,
         blade = function(name, owner) return source(name, daggers, "hilda_dual_attack_astral", owner) end,
+        fireBolt = function(name, owner, key)
+            return source(name, fireBolt, key or "hilda_staff_bolt_fire", owner)
+        end,
+        fireSphere = function(name, parent, owner, key)
+            local s = source(name, fireSphere, key or "hilda_staff_bolt_fire_explosion", owner, 0.9)
+            s.GetOwner = function() return parent end
+            return s
+        end,
         emit = function(name, ...) assert(hooks[name], name).post(...) end,
         beginStep = function(skill)
             anim.doing = "None"
@@ -168,7 +184,7 @@ for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     local t = setup({skill = skill})
     assert(not next(t.hooks))
     t.keys[4]()
-    assert(t.has("START reserve=3 hooks=9"))
+    assert(t.has("START reserve=3 hooks=11"))
     assert(t.count("SHOT") == 0)
     assert(shot(t, "One").rate == 0.875 and t.count("SHOT") == 1)
     assert(shot(t, "Two").rate == 0.875 and shot(t, "Three").rate == 0.875)
@@ -335,4 +351,112 @@ do
     t.endStep()
     t.keys[7]()
 end
-print("PASS: dev Astral combo 2/3 action debit + inherited mode, reserve legacy guards")
+-- Fire changes stay isolated in these dev-only tests. Real UE4SS integration is a separate gate.
+do
+    local t = setup()
+    t.keys[4]()
+    local skills = {"hilda_staff_atk1_idle_fire", "hilda_staff_atk2_fire", "hilda_staff_atk3_fire"}
+    local bolts = {}
+    for i, skill in ipairs(skills) do
+        t.beginStep(skill)
+        local b = t.fireBolt("FireBolt" .. i)
+        bolts[i] = b
+        t.emit(fireBegin, parameter(b))
+        assert(t.has("FIRE_BOLT skill=" .. skill .. " mode=strong"))
+        t.endStep()
+    end
+    assert(t.has("skill=hilda_staff_atk3_fire mode=strong before=1 reserve=0"))
+    assert(t.count("FIRE_BOLT") == 3)
+    -- First-step Fire explosion arrives after End and after step 2/3 has run.
+    for i, b in ipairs(bolts) do
+        local sphere = t.fireSphere("FireSphere" .. i, b)
+        t.emit(fireSphereBegin, parameter(sphere))
+        assert(sphere.rate == 0.9)
+        t.emit(hit, target, parameter(sphere), nil, nil, parameter(90.72))
+    end
+    assert(t.count("FIRE_SPHERE") == 3 and t.count("FIRE_HIT") == 3)
+    assert(t.has("FIRE_HIT mode=fire_strong"))
+    t.beginStep("hilda_staff_atk1_fire")
+    local weakBolt = t.fireBolt("WeakFireBolt")
+    t.emit(fireBegin, parameter(weakBolt))
+    t.endStep()
+    t.beginStep("hilda_staff_atk2_fire")
+    local nextBolt = t.fireBolt("NextFireBolt")
+    t.emit(fireBegin, parameter(nextBolt))
+    local weakSphere = t.fireSphere("WeakFireSphere", weakBolt)
+    t.emit(fireSphereBegin, parameter(weakSphere))
+    assert(weakSphere.rate == string.unpack("f", string.pack("f", 0.45)))
+    t.emit(hit, target, parameter(weakSphere), nil, nil, parameter(45.36))
+    assert(t.has("FIRE_HIT mode=fire_weak") and t.has("FIRE_BOLT skill=hilda_staff_atk2_fire mode=weak"))
+    assert(t.count("FIRE_BOLT") == 5)
+    local weakSphere2 = t.fireSphere("WeakFireSphere2", nextBolt)
+    t.emit(fireSphereBegin, parameter(weakSphere2))
+    assert(weakSphere2.rate == 0.45)
+    t.endStep()
+    contact(t, t.blade("FireRestore1"), target)
+    t.beginStep("hilda_staff_atk3_fire")
+    local restoredBolt = t.fireBolt("FireRestoredBolt")
+    t.emit(fireBegin, parameter(restoredBolt))
+    assert(t.has("FIRE_BOLT skill=hilda_staff_atk3_fire mode=strong before=1 reserve=0"))
+    t.endStep()
+    local restoredSphere = t.fireSphere("RestoredFireSphere", restoredBolt)
+    t.emit(fireSphereBegin, parameter(restoredSphere))
+    assert(restoredSphere.rate == 0.9)
+    t.keys[7]()
+    assert(not next(t.hooks) and t.has("hooks_remaining=0"))
+end
+do
+    local t = setup()
+    t.keys[4]()
+    local b = t.fireBolt("NoBoundary")
+    t.setSkill("hilda_staff_atk2_fire")
+    t.emit(fireBegin, parameter(b))
+    assert(t.count("FIRE_BOLT") == 0 and t.has("reason=unverified_fire_action"))
+    t.beginStep("hilda_staff_atk2_fire")
+    local foreign = t.fireBolt("ForeignFire", object("OtherOwner", 55))
+    t.emit(fireBegin, parameter(foreign))
+    local wrongRow = t.fireBolt("WrongRowFire", nil, "other_fire")
+    t.emit(fireBegin, parameter(wrongRow))
+    assert(t.count("FIRE_BOLT") == 0)
+    local accepted = t.fireBolt("AcceptedFire")
+    t.emit(fireBegin, parameter(accepted))
+    t.emit(fireBegin, parameter(accepted)) -- duplicate callback: no second debit or lost parent.
+    t.emit(fireBegin, parameter(t.fireBolt("ExtraFire")))
+    assert(t.count("FIRE_BOLT") == 1 and t.has("reason=duplicate_fire_bolt")
+        and t.has("reason=unverified_fire_action"))
+    local fakeSphere = t.fireSphere("FakeFireSphere", t.fireBolt("UntrackedParent"))
+    t.emit(fireSphereBegin, parameter(fakeSphere))
+    assert(t.has("reason=unmatched_fire_parent"))
+    local foreignSphere = t.fireSphere("ForeignFireSphere", accepted, object("ForeignOwner", 66))
+    t.emit(fireSphereBegin, parameter(foreignSphere))
+    assert(t.has("reason=foreign_fire_explosion"))
+    local wrongSphere = t.fireSphere("WrongRowSphere", accepted, nil, "other_explosion")
+    t.emit(fireSphereBegin, parameter(wrongSphere))
+    local sphere = t.fireSphere("AcceptedFireSphere", accepted)
+    t.endStep()
+    t.beginStep("hilda_staff_other_special_fire")
+    t.emit(fireSphereBegin, parameter(sphere))
+    assert(sphere.rate == 0.9 and t.count("FIRE_SPHERE") == 1)
+    t.emit(fireSphereBegin, parameter(sphere))
+    assert(t.count("FIRE_SPHERE") == 1 and t.has("reason=duplicate_fire_explosion"))
+    t.endStep()
+    t.keys[7]()
+end
+do
+    local t = setup()
+    t.keys[4]()
+    for i=1,3 do
+        t.beginStep("hilda_staff_atk1_fire")
+        t.emit(fireBegin, parameter(t.fireBolt("DrainFire" .. i)))
+        t.endStep()
+    end
+    t.beginStep("hilda_staff_atk1_fire")
+    local weakBolt = t.fireBolt("WeakWriteError")
+    t.emit(fireBegin, parameter(weakBolt))
+    local sphere = t.fireSphere("WeakWriteErrorSphere", weakBolt)
+    t.emit(fireSphereBegin, parameter(sphere))
+    assert(sphere.rate == 0.45)
+    t.endStep()
+    t.keys[7]()
+end
+print("PASS: dev Astral/Fire basic shared reserve, parent-linked explosion mode, legacy guards")
