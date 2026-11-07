@@ -5,6 +5,8 @@ local projectile = genesis .. "BaseProjectile:"
 local global = genesis .. "GameGlobal:"
 local assets = "/Game/MainContent/Act/Skill_BP/PlayerSkill_BP/"
 local scene = "/Game/MainContent/Act/Scene_BP/BaseScene_BP/BaseSavePoint_BP.BaseSavePoint_BP_C:"
+local mobHit = "/Game/MainContent/Template/BaseBlueprint/BaseAICharacter_Mob_BP.BaseAICharacter_Mob_BP_C:ProjectileHitEvent"
+local mobHitShape = "ObjectProperty:projectile@0,ObjectProperty:hitcomponent@8,StructProperty:hitposition@16,FloatProperty:damage@28"
 local mode, sequence, generation = nil, 0, 0
 local hooks = {}
 
@@ -85,7 +87,7 @@ local function emit(event, detail)
     sequence = sequence + 1
     log(event, "mode=" .. mode .. " run=" .. generation .. " seq=" .. sequence
         .. " wall=" .. os.time() .. " " .. detail)
-    if sequence >= 120 then stop("event_limit") end
+    if mode ~= "melee" and sequence >= 120 then stop("event_limit") end
 end
 
 local function guarded(fn)
@@ -236,9 +238,7 @@ local function fire()
         return value and value:ToString() or "unavailable"
     end
 
-    local hitPath = "/Game/MainContent/Template/BaseBlueprint/BaseAICharacter_Mob_BP.BaseAICharacter_Mob_BP_C:ProjectileHitEvent"
-    local shape = "ObjectProperty:projectile@0,ObjectProperty:hitcomponent@8,StructProperty:hitposition@16,FloatProperty:damage@28"
-    attach(hitPath, shape, function(context, sourceParam, _hitComponent, _hitPosition, damageParam)
+    attach(mobHit, mobHitShape, function(context, sourceParam, _hitComponent, _hitPosition, damageParam)
         if not IsInGameThread() then stop("wrong_thread"); return end
         local target = context:get()
         if not derived(target, "BaseAICharacter_Mob_BP_C") then return end
@@ -276,6 +276,63 @@ local function fire()
     assert(#hooks == 1, "exact mob ProjectileHitEvent unavailable")
 end
 
+local function melee()
+    assert(IsInGameThread(), "melee preflight outside game thread")
+    assert(check(global .. "GetPlayerCharacter", true, true, "ObjectProperty:ReturnValue"), "player getter unavailable")
+    assert(check(projectile .. "GetCharacterOwner", true, false, "ObjectProperty:ReturnValue"), "character owner getter unavailable")
+    local cdoPath = genesis .. "Default__GameGlobal"
+    local classPath = assets .. "hilda_dual_atk.hilda_dual_atk_C"
+    local keys = {
+        hilda_dual_attack = true,
+        hilda_dual_attack_astral = true,
+        hilda_dual_attack_fire = true,
+        hilda_dual_attack_ice = true,
+        hilda_dual_attack_thunder = true,
+    }
+
+    local function instance(object)
+        if not valid(object) then return "none" end
+        return identity(object) .. "#" .. name(object)
+    end
+
+    local function currentPlayer()
+        local cdo = StaticFindObject(cdoPath)
+        assert(valid(cdo) and cdo:GetFullName() == "GameGlobal " .. cdoPath, "missing exact GameGlobal CDO")
+        local player = cdo:GetPlayerCharacter()
+        assert(derived(player, "GenesisCharacter") and name(player:GetClass()) == "hilda_BP_C", "load playable Hilda")
+        return instance(player)
+    end
+
+    local playerId = currentPlayer()
+    local function describe(object)
+        if not valid(object) or object:GetClass():GetFullName() ~= "BlueprintGeneratedClass " .. classPath then return end
+        if currentPlayer() ~= playerId then stop("player_changed"); return end
+        local key = object.ProjectileDataName:ToString()
+        local owner = instance(object:GetCharacterOwner())
+        return "source=" .. instance(object) .. " row=" .. string.format("%q", key)
+            .. " owner=" .. owner .. " player=" .. playerId
+            .. " matched_source=" .. tostring(keys[key] == true and owner == playerId)
+    end
+
+    attach(classPath .. ":ReceiveBeginPlay", "", function(context)
+        if not IsInGameThread() then stop("wrong_thread"); return end
+        local source = describe(context:get())
+        if source then emit("MELEE_SPAWN", source) end
+    end)
+    attach(mobHit, mobHitShape, function(context, sourceParam, componentParam, _hitPosition, damageParam)
+        if not IsInGameThread() then stop("wrong_thread"); return end
+        local source = describe(sourceParam:get())
+        if not source then return end
+        local target = context:get()
+        if not derived(target, "BaseAICharacter_Mob_BP_C") or instance(target) == playerId then return end
+        local damage = damageParam:get()
+        assert(type(damage) == "number" and math.abs(damage) < math.huge, "non-finite notified damage")
+        emit("MELEE_HIT", source .. " target=" .. instance(target) .. " component=" .. instance(componentParam:get())
+            .. " notified_damage=" .. tostring(damage))
+    end, nil, true)
+    assert(#hooks == 2, "incomplete melee observation contract; warm up with daggers near mobs and retry")
+end
+
 local function start(requested)
     if mode then log("BUSY", "mode=" .. mode); return end
     cleanup()
@@ -286,11 +343,14 @@ local function start(requested)
     local ok, err = pcall(function()
         if requested == "fire" then fire()
         elseif requested == "combat" then combat()
+        elseif requested == "melee" then melee()
         else rest() end
         assert(#hooks > 0, "no compatible loaded observation points")
-        ExecuteInGameThreadWithDelay(requested == "fire" and 45000 or requested == "combat" and 120000 or 90000, function()
-            if generation == run then stop("deadline"); cleanup() end
-        end)
+        if requested ~= "melee" then
+            ExecuteInGameThreadWithDelay(requested == "fire" and 45000 or requested == "combat" and 120000 or 90000, function()
+                if generation == run then stop("deadline"); cleanup() end
+            end)
+        end
     end)
     if ok then log("CAPTURE", "mode=" .. mode .. " hooks=" .. #hooks)
     else stop("preflight"); log("ERROR", tostring(err):sub(1, 180)); cleanup() end
@@ -348,8 +408,8 @@ local ok, err = pcall(function()
         end
         return registered and reason == true
     end
-    local restStopAvailable = registerBare("F7", function() stop("user"); cleanup() end)
-    if restStopAvailable then registerBare("F4", function() start("rest") end) end
+    local meleeStopAvailable = registerBare("F7", function() stop("user"); cleanup() end)
+    if meleeStopAvailable then registerBare("F4", function() start("melee") end) end
 
     -- One-shot independent scheduler check even if no key callback is delivered.
     local tickOk, tickErr = pcall(ExecuteInGameThread, function()
@@ -361,5 +421,5 @@ local ok, err = pcall(function()
         log("ENGINE_TICK_PING_ERROR", tostring(tickErr):sub(1, 180))
     end
 end)
-if ok then log("ARMED", "F4=rest F7=stop (see BARE_KEY_*); CtrlShiftF8=combat CtrlShiftF9=rest CtrlShiftF10=stop")
+if ok then log("ARMED", "F4=melee F7=stop (see BARE_KEY_*); CtrlShiftF8=combat CtrlShiftF9=rest CtrlShiftF10=stop")
 else log("UNAVAILABLE", tostring(err):sub(1, 180)) end

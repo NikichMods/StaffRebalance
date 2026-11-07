@@ -4,6 +4,8 @@
 
 **Astral: обычный A/B — PASS, e804 — NOT TESTED. Production gate: BLOCKED.** [Astral Rate Probe 01](ASTRAL_RATE_PROBE_01.md) подтвердил, что post `ReceiveBeginPlay` может разово уменьшить `DamageRate` обычного Astral-болта с 0.90 до 0.45. На том же мобе штатный `ProjectileHitEvent.Damage` снизился с 59.85 до 29.925. Оба хука сняты, проба отключена.
 
+**Melee: CANDIDATE — LIVE EVIDENCE PENDING.** [Melee Contact 01](COMBAT_OBSERVATION_01.md#melee-contact-01--обычный-удар-кинжалами) переиспользует CombatObserver. Доставка события для кинжалов и кратность на один контакт требуют игрового доказательства.
+
 ## Принятые инженерные границы
 
 - **Предпочтительный путь:** менять штатный `DamageRate` конкретного Astral-источника, позволяя игре считать броню, HP и зависимые эффекты. `SetBaseDamageRate` управляет другим входом формулы и может пересчитывать кэш.
