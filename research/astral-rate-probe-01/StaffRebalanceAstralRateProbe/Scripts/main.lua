@@ -54,8 +54,10 @@ local function check(path, native, static, shape, offsets)
 end
 local function field(object, name, offset)
     local prop = object:Reflection():GetProperty(name)
-    if not valid(prop) then return false, "missing_property:" .. name end
-    local kind, actual = prop:GetFullName():match("^(%w+) .+:([^:]+)$")
+    -- XProperty returns nil from GetFullName for a null property.
+    local fullName = prop and prop:GetFullName()
+    if type(fullName) ~= "string" then return false, "missing_property:" .. name end
+    local kind, actual = fullName:match("^(%w+) .+:([^:]+)$")
     if kind ~= "FloatProperty" or actual ~= name then
         return false, "wrong_property:" .. name
     end
@@ -68,6 +70,10 @@ local function get(object, name)
     local value = object:GetPropertyValue(name)
     assert(finite(value), "nonfinite_property:" .. name)
     return value
+end
+local function write(object, name, value)
+    object:SetPropertyValue(name, value)
+    assert(get(object, name) == value, "readback_mismatch:" .. name)
 end
 local function player()
     local cdo = StaticFindObject(GLOBAL)
@@ -117,8 +123,8 @@ local function cleanup()
 end
 local function attach(path, handler)
     local a, b = RegisterHook(path, guarded(handler))
-    assert(type(a) == "number" and a > 0 and a == b, "hook_ids:" .. path)
     hooks[#hooks + 1] = {path = path, a = a, b = b}
+    assert(type(a) == "number" and a > 0 and a == b, "hook_ids:" .. path)
 end
 
 local function begin(context)
@@ -127,6 +133,11 @@ local function begin(context)
     local ok, why = source(bolt)
     if not ok then
         if why ~= "class" and why ~= "row" then log("SKIP", "reason=" .. why) end
+        return
+    end
+    local boltId = id(bolt)
+    if samples[boltId] then
+        log("SKIP", "reason=duplicate_begin source=" .. boltId)
         return
     end
     local goodRate, whyRate = field(bolt, "DamageRate", 0x2C4)
@@ -145,37 +156,43 @@ local function begin(context)
     end
     local reduced = mode == "weak"
     local newRate, newSaved = reduced and rate * 0.5 or rate, reduced and saved * 0.5 or saved
-    if not finite(newRate) or newRate <= 0 or not finite(newSaved) then
+    if reduced then
+        -- Round to the reflected float before checking the value and readback.
+        newRate = string.unpack("f", string.pack("f", newRate))
+        newSaved = string.unpack("f", string.pack("f", newSaved))
+    end
+    if not finite(newRate) or newRate <= 0 or not finite(newSaved) or (saved > 0 and newSaved <= 0) then
         disable("invalid_scaled_rate")
         return
     end
     if reduced then
+        local triedSaved, triedRate = false, false
         local wrote, errorWrite = pcall(function()
             if saved > 0 then
-                bolt:SetPropertyValue(SAVED, newSaved)
-                assert(equal(get(bolt, SAVED), newSaved), "saved_not_updated")
+                triedSaved = true
+                write(bolt, SAVED, newSaved)
             end
-            bolt:SetPropertyValue("DamageRate", newRate)
-            assert(equal(get(bolt, "DamageRate"), newRate), "rate_not_updated")
+            triedRate = true
+            write(bolt, "DamageRate", newRate)
         end)
         if not wrote then
-            local restored, errorRestore = pcall(function()
-                bolt:SetPropertyValue("DamageRate", rate)
-                if saved > 0 then bolt:SetPropertyValue(SAVED, saved) end
-                assert(equal(get(bolt, "DamageRate"), rate), "rate_not_restored")
-                if saved > 0 then assert(equal(get(bolt, SAVED), saved), "saved_not_restored") end
-            end)
-            if not restored then
-                log("ROLLBACK_FAILED", "source=" .. id(bolt) .. " error=" .. tostring(errorRestore):sub(1, 110)
+            local rateRestored, savedRestored = true, true
+            if triedRate then rateRestored = pcall(write, bolt, "DamageRate", rate) end
+            if triedSaved then savedRestored = pcall(write, bolt, SAVED, saved) end
+            if not rateRestored or not savedRestored then
+                log("ROLLBACK_FAILED", "source=" .. boltId .. " rate_restored=" .. tostring(rateRestored)
+                    .. " saved_restored=" .. tostring(savedRestored)
                     .. " action=quit_without_save")
+            else
+                log("ROLLBACK_OK", "source=" .. boltId)
             end
             disable("write_failed:" .. tostring(errorWrite))
             return
         end
     end
     serial = serial + 1
-    samples[tostring(bolt:GetAddress())] = {serial = serial, mode = mode}
-    log("BOLT", "n=" .. serial .. " mode=" .. mode .. " source=" .. id(bolt)
+    samples[boltId] = {serial = serial, mode = mode}
+    log("BOLT", "n=" .. serial .. " mode=" .. mode .. " source=" .. boltId
         .. " talent=" .. talent .. " before=" .. tostring(rate)
         .. " after=" .. tostring(get(bolt, "DamageRate"))
         .. " original_before=" .. tostring(saved)
@@ -185,14 +202,15 @@ local function hit(context, projectile, _component, _position, damage)
     if not IsInGameThread() then disable("wrong_thread"); return end
     local bolt = projectile:get()
     if not source(bolt) then return end
-    local sample = samples[tostring(bolt:GetAddress())]
+    local boltId = id(bolt)
+    local sample = samples[boltId]
     local notified = damage:get()
     if not finite(notified) then disable("invalid_hit_damage"); return end
     local target = context:get()
     if not valid(target) then return end
     log("HIT", "n=" .. (sample and sample.serial or "untracked")
         .. " spawn_mode=" .. (sample and sample.mode or "unknown")
-        .. " source=" .. id(bolt) .. " target=" .. id(target)
+        .. " source=" .. boltId .. " target=" .. id(target)
         .. " current_rate=" .. tostring(get(bolt, "DamageRate"))
         .. " notified_damage=" .. tostring(notified) .. " phase=script_post")
 end
@@ -200,7 +218,6 @@ end
 local function arm(nextMode)
     if disabled then log("UNAVAILABLE", "restart_required"); return end
     if not IsInGameThread() then log("UNAVAILABLE", "not_game_thread"); return end
-    if not player() then log("UNAVAILABLE", "load_playable_hilda"); return end
     if #hooks == 0 then
         for _, row in ipairs({
             {"/Script/Genesis.GameGlobal:GetPlayerCharacter", true, true, "ObjectProperty:ReturnValue", false},
@@ -211,6 +228,7 @@ local function arm(nextMode)
             local ok, reason = check(row[1], row[2], row[3], row[4], row[5])
             if not ok then log("UNAVAILABLE", reason); return end
         end
+        if not player() then log("UNAVAILABLE", "load_playable_hilda"); return end
         local ok, err = pcall(function()
             attach(BEGIN, begin)
             attach(HIT, hit)
@@ -231,7 +249,8 @@ local function arm(nextMode)
         .. " wait_for_previous_bolt_before_switch=true")
 end
 local function stop()
-    mode = nil
+    if not IsInGameThread() then disable("stop_wrong_thread"); return end
+    mode, disabled = nil, true
     cleanup()
     samples = {}
     log("STOP", "hooks_remaining=" .. #hooks .. " exit_game_without_save=true")
@@ -263,5 +282,6 @@ end)
 if ok then
     log("ARMED", "inactive_by_default=true F4=vanilla F6=weak F7=stop")
 else
+    disabled = true
     log("UNAVAILABLE", tostring(errorStartup):sub(1, 180))
 end
