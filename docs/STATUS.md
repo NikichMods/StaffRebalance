@@ -1,6 +1,6 @@
 # StaffRebalance — текущий статус
 
-**Dev Prototype 01: подготовлен dev-кандидат оплаты Astral atk2/atk3 по штатному Begin/End.** Исходный research baseline сохранён; новые исходник и [dev-тесты](../dev/StaffRebalanceDev/tests.lua) находятся только в `dev/reserve-core-01`. Новая dev-установка и поведение ещё NOT TESTED. **Production gate — BLOCKED.**
+**Dev Prototype 01: подготовлен dev-кандидат оплаты Astral atk2/atk3 по штатному Begin/End.** Исходный research baseline сохранён; новые исходник и [dev-тесты](../dev/StaffRebalanceDev/tests.lua) находятся только в `dev/reserve-core-01`. [Lua 5.4 CI](https://github.com/NikichMods/StaffRebalance/actions/runs/42399844375): **PASS** (syntax + mock) для исходников из `fe5c745`; новая dev-установка и игровое поведение ещё **NOT TESTED**. **Production gate — BLOCKED.**
 
 **Reserve Slice 01: узкий игровой цикл PASS, срез отключён.** [Прогон](RESERVE_SLICE_01.md#игровой-pass-автоматического-среза--2026-11-07) подтвердил расход 3 → 0, 29,925 у слабого Astral и 59,85 после melee-пополнения на том же мобе. Выход из меню сохранил остаток, отдых вернул полный запас. Все семь хуков сняты.
 
@@ -27,7 +27,7 @@
 
 ## Следующий узкий шаг
 
-**Astral-комбо 2/3: read-only PASS.** [Прогон](ASTRAL_COMBO_BOUNDARY_01.md#игровой-результат-2026-11-07) связал по 2/3 болта с отдельными исполнениями между `BeginDoSkill` post и соответствующим `EndDoSkill`. Повтор и остановка после второго шага различались по событиям. Механика одного списания за шаг теперь реализована в [dev-кандидате](DEV_PROTOTYPE_01.md#dev-кандидат-одно-списание-за-astral-atk2atk3--2026-11-07), но Lua 5.4 и реальная игра для него ещё НЕ ПРОВЕРЕНЫ. Production gate остаётся BLOCKED.
+**Astral-комбо 2/3: read-only PASS.** [Прогон](ASTRAL_COMBO_BOUNDARY_01.md#игровой-результат-2026-11-07) связал по 2/3 болта с отдельными исполнениями между `BeginDoSkill` post и соответствующим `EndDoSkill`. Повтор и остановка после второго шага различались по событиям. Механика одного списания за шаг теперь реализована в [dev-кандидате](DEV_PROTOTYPE_01.md#dev-кандидат-одно-списание-за-astral-atk2atk3--2026-11-07), Lua 5.4 mock прошёл; реальная игра для него ещё НЕ ПРОВЕРЕНА. Production gate остаётся BLOCKED.
 
 Независимая проверка коэффициента Astral с талантом `e804` остаётся [NOT TESTED](ASTRAL_RATE_PROBE_01.md); выполнить, когда талант доступен в штатном сохранении. Melee, Fire и HUD не объединять с текущим шагом.
 
