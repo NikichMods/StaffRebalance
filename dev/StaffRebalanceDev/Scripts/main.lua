@@ -1,11 +1,19 @@
 -- SPDX-License-Identifier: MPL-2.0
--- Dev candidate, not production. F3=start, F7=stop. Astral/Fire/Thunder basics share reserve.
+-- Dev candidate, not production. F3=start, F7=stop. Astral/Fire/Thunder/Ice basic staff attacks.
 local prefix = "STAFF_RESERVE01"
 local assets = "/Game/MainContent/Act/Skill_BP/PlayerSkill_BP/"
 local astral = assets .. "hilda_staff_bolt_astral.hilda_staff_bolt_astral_C"
 local fireBolt = assets .. "hilda_staff_bolt_fire.hilda_staff_bolt_fire_C"
 local fireSphere = "/Game/MainContent/Act/Skill_BP/CommonSkill_BP/sphere_200.sphere_200_C"
 local thunderBolt = assets .. "hilda_staff_bolt_thunder.hilda_staff_bolt_thunder_C"
+local iceBolt = assets .. "hilda_staff_bolt_ice.hilda_staff_bolt_ice_C"
+local iceSphere = "/Game/MainContent/Act/Skill_BP/CommonSkill_BP/sphere_150.sphere_150_C"
+local iceSkills = {
+    hilda_staff_atk1_idle_ice = true,
+    hilda_staff_atk1_ice = true,
+    hilda_staff_atk2_ice = true,
+    hilda_staff_atk3_ice = true,
+}
 local thunderSkills = {
     hilda_staff_atk1_idle_thunder = true, hilda_staff_atk1_thunder = true,
     hilda_staff_atk2_thunder = true, hilda_staff_atk3_thunder = true,
@@ -180,7 +188,7 @@ local function comboBegin(_, context)
     -- An independent Begin replaces the prior action, including an interrupted one.
     session.combo = nil
     if skill == "hilda_staff_atk2" or skill == "hilda_staff_atk3"
-        or fireSkills[skill] or thunderSkills[skill] then
+        or fireSkills[skill] or thunderSkills[skill] or iceSkills[skill] then
         session.combo = {skill = skill}
         log("COMBO_BEGIN", "skill=" .. skill)
     end
@@ -417,6 +425,102 @@ local function fireExplosion(pawn, context)
         .. " rate=" .. rate .. " effective=" .. effective)
 end
 
+-- Ice creates a carrier bolt and repeated child damage pulses. Capture one
+-- mode/debit on native skill execution; apply that mode to the carrier itself.
+-- Unlike Fire, the parent mapping must survive ALL child pulses and EndDoSkill.
+local function iceBegin(pawn, context)
+    local bolt = context:get()
+    assert(exact(bolt, iceBolt), "unexpected_ice_context")
+    local sourceId = id(bolt)
+    if session.shots[sourceId] then
+        log("SKIP", "reason=duplicate_ice_bolt source=" .. sourceId)
+        return
+    end
+    -- Reject stale parent context when a distinct/unsupported actor takes this ID.
+    session.iceParents[sourceId] = nil
+    if bolt.ProjectileDataName:ToString() ~= "hilda_staff_bolt_ice" or not owned(bolt, pawn) then
+        log("SKIP", "reason=foreign_or_unsupported_ice_bolt source=" .. sourceId)
+        return
+    end
+    local skill = StaticFindObject(GLOBAL):GetDoingSkill(pawn):ToString()
+    if not iceSkills[skill] then
+        log("SKIP", "reason=unsupported_ice_skill skill=" .. skill)
+        return
+    end
+    local combo = session.combo
+    local mesh = pawn.Mesh
+    local anim = valid(mesh) and mesh:GetAnimInstance()
+    if not combo or combo.skill ~= skill or combo.mode or not valid(anim) or id(anim) ~= session.anim then
+        log("SKIP", "reason=unverified_ice_action skill=" .. skill)
+        return
+    end
+    assert(field(bolt, "DamageRate", 0x2C4))
+    local rate = get(bolt, "DamageRate")
+    assert(rate > 0, "invalid_ice_rate")
+    local before = session.reserve
+    local mode = before > 0 and "strong" or "weak"
+    local effective = rate
+    if mode == "weak" then
+        effective = string.unpack("f", string.pack("f", rate * 0.5))
+        assert(finite(effective) and effective > 0 and effective < rate, "invalid_weak_ice_rate")
+        local ok, err = pcall(write, bolt, "DamageRate", effective)
+        if not ok then
+            local restored = pcall(write, bolt, "DamageRate", rate)
+            log(restored and "ROLLBACK_OK" or "ROLLBACK_FAILED", "source=" .. sourceId)
+            error(err)
+        end
+    end
+    session.iceParents[sourceId] = mode
+    combo.mode, combo.iceSource = mode, sourceId
+    if mode == "strong" then session.reserve = before - 1 end
+    session.shots[sourceId] = "ice_" .. mode
+    log("ICE_BOLT", "skill=" .. skill .. " mode=" .. mode .. " before=" .. before
+        .. " reserve=" .. session.reserve .. " debit=" .. (mode == "strong" and 1 or 0)
+        .. " rate=" .. rate .. " effective=" .. effective .. " source=" .. sourceId)
+end
+
+local function icePulse(pawn, context)
+    local sphere = context:get()
+    assert(exact(sphere, iceSphere), "unexpected_ice_pulse_context")
+    -- Same Blueprint class is also used for Ice VFX and an unrelated Fourth attack.
+    if sphere.ProjectileDataName:ToString() ~= "hilda_staff_bolt_ice_hit" then return end
+    local sourceId = id(sphere)
+    if session.shots[sourceId] then
+        log("SKIP", "reason=duplicate_ice_pulse source=" .. sourceId)
+        return
+    end
+    local parent = sphere:GetOwner()
+    if not exact(parent, iceBolt) or parent.ProjectileDataName:ToString() ~= "hilda_staff_bolt_ice"
+        or not owned(parent, pawn) or not owned(sphere, pawn) then
+        log("SKIP", "reason=foreign_ice_pulse source=" .. sourceId)
+        return
+    end
+    local parentId = id(parent)
+    local mode = session.iceParents[parentId]
+    if not mode then
+        log("SKIP", "reason=unmatched_ice_parent parent=" .. parentId)
+        return
+    end
+    assert(field(sphere, "DamageRate", 0x2C4))
+    local rate = get(sphere, "DamageRate")
+    assert(rate > 0, "invalid_ice_pulse_rate")
+    local effective = rate
+    if mode == "weak" then
+        effective = string.unpack("f", string.pack("f", rate * 0.5))
+        assert(finite(effective) and effective > 0 and effective < rate, "invalid_weak_ice_pulse_rate")
+        local ok, err = pcall(write, sphere, "DamageRate", effective)
+        if not ok then
+            local restored = pcall(write, sphere, "DamageRate", rate)
+            log(restored and "ROLLBACK_OK" or "ROLLBACK_FAILED", "source=" .. sourceId)
+            error(err)
+        end
+    end
+    -- Do NOT remove iceParents[parentId]: another pulse may arrive later.
+    session.shots[sourceId] = "ice_" .. mode
+    log("ICE_PULSE", "mode=" .. mode .. " source=" .. sourceId .. " parent=" .. parentId
+        .. " rate=" .. rate .. " effective=" .. effective)
+end
+
 local function meleeKind(source)
     local class = source:GetClass():GetFullName()
     local row = source.ProjectileDataName:ToString()
@@ -449,6 +553,18 @@ local function hit(pawn, context, sourceParam, _component, _position, damagePara
             assert(finite(damage), "invalid_fire_notification")
             log("FIRE_HIT", "mode=" .. mode .. " notified_damage=" .. damage
                 .. " rate=" .. get(source, "DamageRate") .. " source=" .. id(source) .. " target=" .. id(target))
+        end
+        return
+    end
+    if exact(source, iceBolt) or exact(source, iceSphere) then
+        local sourceId = id(source)
+        local mode = session.shots[sourceId]
+        if mode == "ice_strong" or mode == "ice_weak" then
+            local damage = damageParam:get()
+            assert(finite(damage), "invalid_ice_notification")
+            local kind = exact(source, iceBolt) and "carrier" or "pulse"
+            log("ICE_HIT", "kind=" .. kind .. " mode=" .. mode .. " notified_damage=" .. damage
+                .. " rate=" .. get(source, "DamageRate") .. " source=" .. sourceId .. " target=" .. id(target))
         end
         return
     end
@@ -588,6 +704,24 @@ local function start()
     else
         log("THUNDER_UNAVAILABLE", "reason=" .. thunderReason .. " warmup_thunder_before_F3=true")
     end
+    -- Ice is optional as a pair: never debit a carrier without the child hook.
+    local iceReady = true
+    for _, spec in ipairs({
+        {"/Script/Engine.Actor:GetOwner", true, false, "ObjectProperty:ReturnValue"},
+        {iceBolt .. ":ReceiveBeginPlay", false, false, ""},
+        {iceSphere .. ":ReceiveBeginPlay", false, false, ""},
+    }) do
+        local ready, reason = check(table.unpack(spec))
+        if not ready then
+            iceReady = false
+            log("ICE_UNAVAILABLE", "reason=" .. reason .. " warmup_ice_before_F3=true")
+            break
+        end
+    end
+    if iceReady then
+        routes[#routes + 1] = {iceBolt .. ":ReceiveBeginPlay", "", iceBegin}
+        routes[#routes + 1] = {iceSphere .. ":ReceiveBeginPlay", "", icePulse}
+    end
     local ok, err = pcall(function()
         for _, route in ipairs(routes) do attach(route[1], route[3]) end
         attachNative(animSkill .. "BeginDoSkill", function() end, comboBegin)
@@ -599,11 +733,12 @@ local function start()
         return
     end
     session = {player = id(pawn), anim = id(anim), reserve = capacity,
-        shots = {}, fireParents = {}, contacts = {}, skippedSkills = {},
+        shots = {}, fireParents = {}, iceParents = {}, contacts = {}, skippedSkills = {},
         diagnostic = {total = 0, byWeapon = {}}}
     log("START", "reserve=" .. capacity .. " hooks=" .. #hooks
         .. " fire=" .. (fireReady and "ready" or "unavailable")
         .. " thunder=" .. (thunderReady and "ready" or "unavailable")
+        .. " ice=" .. (iceReady and "ready" or "unavailable")
         .. " diag_total=0 diag_capacity=" .. diagnosticCapacity)
 end
 

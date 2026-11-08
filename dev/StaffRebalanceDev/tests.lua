@@ -9,6 +9,10 @@ local fireBegin = fireBolt .. ":ReceiveBeginPlay"
 local fireSphereBegin = fireSphere .. ":ReceiveBeginPlay"
 local thunderBolt = assets .. "hilda_staff_bolt_thunder.hilda_staff_bolt_thunder_C"
 local thunderBegin = thunderBolt .. ":ReceiveBeginPlay"
+local iceBolt = assets .. "hilda_staff_bolt_ice.hilda_staff_bolt_ice_C"
+local iceSphere = "/Game/MainContent/Act/Skill_BP/CommonSkill_BP/sphere_150.sphere_150_C"
+local iceBegin = iceBolt .. ":ReceiveBeginPlay"
+local icePulseBegin = iceSphere .. ":ReceiveBeginPlay"
 local daggers = assets .. "hilda_dual_atk.hilda_dual_atk_C"
 local otherMelee = {
     daggers_base = {daggers, "hilda_dual_attack_astral"},
@@ -84,6 +88,8 @@ local function setup(options)
     reflected("/Script/Engine.Actor:GetOwner", 0x400, {result})
     reflected(begin, 0)
     if not options.missingThunder then reflected(thunderBegin, 0) end
+    if not options.missingIceBolt then reflected(iceBegin, 0) end
+    if not options.missingIcePulse then reflected(icePulseBegin, 0) end
     if not options.missingFire then
         reflected(fireBegin, 0)
         reflected(fireSphereBegin, 0)
@@ -160,6 +166,14 @@ local function setup(options)
         thunderBolt = function(name, owner, key)
             return source(name, thunderBolt, key or "hilda_staff_bolt_thunder", owner)
         end,
+        iceBolt = function(name, owner, key)
+            return source(name, iceBolt, key or "hilda_staff_bolt_ice", owner, 0.8)
+        end,
+        iceSphere = function(name, parent, owner, key)
+            local s = source(name, iceSphere, key or "hilda_staff_bolt_ice_hit", owner, 0.9)
+            s.GetOwner = function() return parent end
+            return s
+        end,
         fireSphere = function(name, parent, owner, key)
             local s = source(name, fireSphere, key or "hilda_staff_bolt_fire_explosion", owner, 0.9)
             s.GetOwner = function() return parent end
@@ -206,7 +220,7 @@ for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     local t = setup({skill = skill})
     assert(not next(t.hooks))
     t.keys[3]()
-    assert(t.has("START reserve=3 hooks=12") and t.has("diag_total=0 diag_capacity=50"))
+    assert(t.has("START reserve=3 hooks=14") and t.has("diag_total=0 diag_capacity=50"))
     assert(t.count("SHOT") == 0)
     assert(shot(t, "One").rate == 0.875 and t.count("SHOT") == 1)
     assert(shot(t, "Two").rate == 0.875 and shot(t, "Three").rate == 0.875)
@@ -488,7 +502,7 @@ do
     local t = setup({missingFire = true})
     t.keys[3]()
     assert(t.has("FIRE_UNAVAILABLE reason=missing:"))
-    assert(t.has("START reserve=3 hooks=10 fire=unavailable thunder=ready"))
+    assert(t.has("START reserve=3 hooks=12 fire=unavailable thunder=ready ice=ready"))
     assert(shot(t, "AstralWithFireClassUnloaded").rate == 0.875)
     assert(t.has("mode=strong before=3 reserve=2"))
     t.keys[7]()
@@ -607,7 +621,7 @@ do
     local s = setup({missingThunder = true})
     s.keys[3]()
     assert(s.has("THUNDER_UNAVAILABLE reason=missing:")
-        and s.has("START reserve=3 hooks=11 fire=ready thunder=unavailable"))
+        and s.has("START reserve=3 hooks=13 fire=ready thunder=unavailable ice=ready"))
     assert(shot(s, "NoThunderYet").rate == 0.875)
     s.keys[7]()
     assert(not next(s.hooks))
@@ -672,4 +686,122 @@ do
     assert(s.count("THUNDER_BOLT") == 2)
     s.keys[7]()
 end
-print("PASS: dev Astral/Fire/Thunder basic shared reserve, parent-linked explosion mode, legacy guards")
+-- Ice parent/children: carrier and all distinct damage pulses inherit one action
+-- mode. VFX and Fourth share the sphere_150 class but must not be modified.
+do
+    local s = setup({missingIcePulse = true})
+    s.keys[3]()
+    assert(s.has("ICE_UNAVAILABLE reason=missing:") and s.has("START reserve=3 hooks=12")
+        and s.has("ice=unavailable"))
+    assert(shot(s, "AstralWhenIceMissing").rate == 0.875)
+    assert(s.hooks[iceBegin] == nil and s.hooks[icePulseBegin] == nil)
+    s.keys[7]()
+    assert(not next(s.hooks))
+end
+do
+    local s = setup({missingIceBolt = true})
+    s.keys[3]()
+    assert(s.hooks[iceBegin] == nil and s.hooks[icePulseBegin] == nil)
+    assert(s.has("ICE_UNAVAILABLE reason=missing:"))
+    s.keys[7]()
+end
+do
+    local s = setup()
+    s.keys[3]()
+    local parents = {}
+    for i, skill in ipairs({"hilda_staff_atk1_idle_ice", "hilda_staff_atk2_ice", "hilda_staff_atk3_ice"}) do
+        s.beginStep(skill)
+        local bolt = s.iceBolt("IceStrong" .. i)
+        parents[#parents + 1] = bolt
+        s.emit(iceBegin, parameter(bolt))
+        assert(bolt.rate == 0.8 and s.has("ICE_BOLT skill=" .. skill .. " mode=strong"))
+        s.emit(iceBegin, parameter(bolt))
+        assert(s.count("ICE_BOLT") == i and s.has("reason=duplicate_ice_bolt"))
+        s.endStep()
+    end
+    assert(s.has("ICE_BOLT skill=hilda_staff_atk3_ice mode=strong before=1 reserve=0 debit=1"))
+    -- Strong pulses remain strong after subsequent skill transitions and zero reserve.
+    for i, parent in ipairs(parents) do
+        local pulse = s.iceSphere("LateStrongPulse" .. i, parent)
+        s.emit(icePulseBegin, parameter(pulse))
+        assert(pulse.rate == 0.9)
+        contact(s, pulse, target)
+    end
+    assert(s.count("ICE_PULSE") == 3 and s.count("ICE_HIT") == 3
+        and s.has("ICE_HIT kind=pulse mode=ice_strong"))
+    s.beginStep("hilda_staff_atk1_ice")
+    local weak = s.iceBolt("IceWeakParent")
+    s.emit(iceBegin, parameter(weak))
+    assert(weak.rate == string.unpack("f", string.pack("f", 0.4))
+        and s.has("ICE_BOLT skill=hilda_staff_atk1_ice mode=weak before=0 reserve=0 debit=0"))
+    contact(s, weak, target)
+    assert(s.has("ICE_HIT kind=carrier mode=ice_weak"))
+    s.endStep()
+    s.beginStep("hilda_staff_atk2_ice")
+    local nextParent = s.iceBolt("NextIceParent")
+    s.emit(iceBegin, parameter(nextParent))
+    s.endStep()
+    for i=1,4 do
+        local pulse = s.iceSphere("WeakPulse" .. i, weak)
+        s.emit(icePulseBegin, parameter(pulse))
+        assert(pulse.rate == string.unpack("f", string.pack("f", 0.45)))
+        s.emit(icePulseBegin, parameter(pulse))
+        assert(s.count("ICE_PULSE") == 3 + i)
+    end
+    assert(s.count("ICE_BOLT") == 5 and s.count("ICE_PULSE") == 7)
+    contact(s, s.iceSphere("NoBeginPulse", weak), target)
+    -- Another valid pulse after different skill and after melee restoring reserve.
+    contact(s, s.blade("RestoreIceReserve"), target)
+    s.beginStep("hilda_staff_atk3_ice")
+    local restored = s.iceBolt("IceRestored")
+    s.emit(iceBegin, parameter(restored))
+    assert(s.has("ICE_BOLT skill=hilda_staff_atk3_ice mode=strong before=1 reserve=0 debit=1"))
+    s.endStep()
+    local late = s.iceSphere("WeakAfterRecharge", weak)
+    s.emit(icePulseBegin, parameter(late))
+    assert(late.rate == string.unpack("f", string.pack("f", 0.45)))
+    -- Negative rows: same class must never mean same damage actor.
+    local vfx = s.iceSphere("VFX", weak, nil, "hilda_staff_bolt_ice_vfx")
+    local fourth = s.iceSphere("Fourth", weak, nil, "hilda_staff_ice_atk4_hit")
+    s.emit(icePulseBegin, parameter(vfx))
+    s.emit(icePulseBegin, parameter(fourth))
+    assert(vfx.rate == 0.9 and fourth.rate == 0.9
+        and s.count("ICE_PULSE") == 8 and s.count("ICE_BOLT") == 6)
+    s.keys[7]()
+    assert(not next(s.hooks) and s.has("hooks_remaining=0"))
+end
+do
+    local s = setup()
+    s.keys[3]()
+    s.setSkill("hilda_staff_atk2_ice")
+    local unrelated = s.iceBolt("OutsideBoundary")
+    s.emit(iceBegin, parameter(unrelated))
+    assert(s.count("ICE_BOLT") == 0 and s.has("reason=unverified_ice_action"))
+    s.beginStep("hilda_staff_atk2_ice")
+    s.emit(iceBegin, parameter(s.iceBolt("ForeignBolt", object("OtherOwner", 90))))
+    s.emit(iceBegin, parameter(s.iceBolt("BadRow", nil, "other_ice")))
+    assert(s.count("ICE_BOLT") == 0)
+    local accepted = s.iceBolt("KnownIceParent")
+    s.emit(iceBegin, parameter(accepted))
+    assert(s.count("ICE_BOLT") == 1)
+    s.endStep()
+    for _, case in ipairs({
+        {"UnknownParent", s.iceBolt("NeverSeen")},
+        {"WrongParentRow", s.iceBolt("Wrong", nil, "wrong_ice")},
+        {"ForeignParent", s.iceBolt("Alien", object("OtherOwner", 80))},
+        {"NoParent", nil},
+    }) do
+        local pulse = s.iceSphere(case[1], case[2])
+        s.emit(icePulseBegin, parameter(pulse))
+        assert(pulse.rate == 0.9 and s.count("ICE_PULSE") == 0)
+    end
+    s.emit(icePulseBegin, parameter(s.iceSphere("ForeignSphere", accepted, object("OtherOwner", 81))))
+    assert(s.count("ICE_PULSE") == 0)
+    s.beginStep("hilda_staff_other_special_ice")
+    s.emit(iceBegin, parameter(s.iceBolt("Special")))
+    assert(s.count("ICE_BOLT") == 1 and s.has("reason=unsupported_ice_skill"))
+    s.endStep()
+    s.keys[7]()
+end
+print("PASS: dev Astral/Fire/Thunder/Ice basic shared reserve, repeated parent-linked Ice pulses, legacy guards")
+
