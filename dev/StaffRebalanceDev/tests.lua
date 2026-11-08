@@ -8,6 +8,12 @@ local fireSphere = "/Game/MainContent/Act/Skill_BP/CommonSkill_BP/sphere_200.sph
 local fireBegin = fireBolt .. ":ReceiveBeginPlay"
 local fireSphereBegin = fireSphere .. ":ReceiveBeginPlay"
 local daggers = assets .. "hilda_dual_atk.hilda_dual_atk_C"
+local otherMelee = {
+    spear = {assets .. "hilda_spear.hilda_spear_C", "hilda_spear_astral"},
+    hammer = {assets .. "hilda_cudgel_fire.hilda_cudgel_fire_C", "hilda_cudgel_astral"},
+    sword_shield = {assets .. "hilda_sword_atk.hilda_sword_atk_C", "hilda_sword_attack_astral"},
+    bracelets = {assets .. "hilda_bracelet_atk1.hilda_bracelet_atk1_C", "hilda_bracelet_astral"},
+}
 local root = "/Game/MainContent/Template/BaseBlueprint/"
 local hit = root .. "BaseAICharacter_Mob_BP.BaseAICharacter_Mob_BP_C:ProjectileHitEvent"
 local conduit = "/Game/MainContent/Act/Scene_BP/BaseScene_BP/BaseSavePoint_BP.BaseSavePoint_BP_C:"
@@ -137,6 +143,10 @@ local function setup(options)
         setSkill = function(value) options.skill = value end,
         setSaved = function(value) options.saved = value end,
         blade = function(name, owner) return source(name, daggers, "hilda_dual_attack_astral", owner) end,
+        melee = function(name, kind, owner, row)
+            local spec = assert(otherMelee[kind], kind)
+            return source(name, spec[1], row or spec[2], owner)
+        end,
         fireBolt = function(name, owner, key)
             return source(name, fireBolt, key or "hilda_staff_bolt_fire", owner)
         end,
@@ -229,6 +239,34 @@ for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     assert(t.has("MELEE before=2 reserve=3") and t.has("MELEE before=3 reserve=3"))
     t.keys[7](); assert(not next(t.hooks) and t.has("STOP reserve=3 hooks_remaining=0"))
     t.keys[4](); assert(not next(t.hooks))
+end
+
+-- Survey-confirmed first melee sources: the same mob-hit route, distinct class/row pairs.
+-- These are synthetic callbacks; a real-game integration test remains necessary.
+for _, kind in ipairs({"spear", "hammer", "sword_shield", "bracelets"}) do
+    local t = setup({skill = "hilda_staff_atk1"})
+    t.keys[4]()
+    for i = 1, 3 do shot(t, kind .. "Drain" .. i) end
+    assert(t.has("mode=strong before=1 reserve=0"))
+    local first = t.melee(kind .. "First", kind)
+    contact(t, first, target)
+    assert(t.count("MELEE") == 1 and t.has("MELEE before=0 reserve=1")
+        and t.has("weapon=" .. kind))
+    contact(t, first, target) -- Bracelet repeated callback: do not double-credit one source-target pair.
+    assert(t.count("MELEE") == 1 and t.has("DUPLICATE reserve=1"))
+    contact(t, t.melee(kind .. "WrongRow", kind, nil, "other_melee_row"), target)
+    contact(t, t.melee(kind .. "Foreign", kind, object("ForeignOwner", 91)), target)
+    assert(t.count("MELEE") == 1)
+    contact(t, first, other) -- Different target of the same source is a separate pair.
+    assert(t.count("MELEE") == 2 and t.has("MELEE before=1 reserve=2"))
+    contact(t, t.melee(kind .. "NextSource", kind), target)
+    assert(t.count("MELEE") == 3 and t.has("MELEE before=2 reserve=3"))
+    contact(t, t.melee(kind .. "OverCap", kind), target)
+    assert(t.count("MELEE") == 4 and t.has("MELEE before=3 reserve=3"))
+    contact(t, t.bolt(kind .. "StaffNegative"), target)
+    assert(t.count("MELEE") == 4)
+    t.keys[7]()
+    assert(not next(t.hooks) and t.has("STOP reserve=3 hooks_remaining=0"))
 end
 
 do

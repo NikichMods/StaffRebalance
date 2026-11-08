@@ -12,6 +12,15 @@ local fireSkills = {
     hilda_staff_atk3_fire = true,
 }
 local daggers = assets .. "hilda_dual_atk.hilda_dual_atk_C"
+-- Exact first-attack mob-hit sources observed in the 2026-11-08 melee survey.
+-- Other rows, skills and elemental variants are not inferred from the class prefix.
+local meleeSources = {
+    {kind = "daggers", class = daggers, row = "hilda_dual_attack_astral"},
+    {kind = "spear", class = assets .. "hilda_spear.hilda_spear_C", row = "hilda_spear_astral"},
+    {kind = "hammer", class = assets .. "hilda_cudgel_fire.hilda_cudgel_fire_C", row = "hilda_cudgel_astral"},
+    {kind = "sword_shield", class = assets .. "hilda_sword_atk.hilda_sword_atk_C", row = "hilda_sword_attack_astral"},
+    {kind = "bracelets", class = assets .. "hilda_bracelet_atk1.hilda_bracelet_atk1_C", row = "hilda_bracelet_astral"},
+}
 local root = "/Game/MainContent/Template/BaseBlueprint/"
 local mobHit = root .. "BaseAICharacter_Mob_BP.BaseAICharacter_Mob_BP_C:ProjectileHitEvent"
 local conduit = "/Game/MainContent/Act/Scene_BP/BaseScene_BP/BaseSavePoint_BP.BaseSavePoint_BP_C:"
@@ -325,6 +334,17 @@ local function fireExplosion(pawn, context)
         .. " rate=" .. rate .. " effective=" .. effective)
 end
 
+local function meleeKind(source)
+    local class = source:GetClass():GetFullName()
+    local row = source.ProjectileDataName:ToString()
+    for _, spec in ipairs(meleeSources) do
+        if class == "BlueprintGeneratedClass " .. spec.class and row == spec.row then
+            return spec.kind
+        end
+    end
+    return nil
+end
+
 local function hit(pawn, context, sourceParam, _component, _position, damageParam)
     local target, source = context:get(), sourceParam:get()
     if not valid(target) or not valid(source) then return end
@@ -349,10 +369,11 @@ local function hit(pawn, context, sourceParam, _component, _position, damagePara
         end
         return
     end
-    if not exact(source, daggers) or source.ProjectileDataName:ToString() ~= "hilda_dual_attack_astral"
-        or not owned(source, pawn) then return end
+    local kind = meleeKind(source)
+    if not kind or not owned(source, pawn) then return end
     -- The hooked BaseAICharacter_Mob_BP_C receiver is a combat character, not scenery.
     -- The accepted contact contract does not require an additional faction filter.
+    -- At most one credit per source-target pair: repeated callbacks are logged but not credited.
     local damage = damageParam:get()
     assert(finite(damage), "invalid_melee_notification")
     local sourceId, targetId = id(source), id(target)
@@ -369,7 +390,7 @@ local function hit(pawn, context, sourceParam, _component, _position, damagePara
     local before = session.reserve
     session.reserve = math.min(capacity, before + 1)
     log("MELEE", "before=" .. before .. " reserve=" .. session.reserve .. " notified_damage=" .. damage
-        .. " source=" .. sourceId .. " target=" .. targetId)
+        .. " source=" .. sourceId .. " target=" .. targetId .. " weapon=" .. kind)
 end
 
 local function requestRest(_, context)
