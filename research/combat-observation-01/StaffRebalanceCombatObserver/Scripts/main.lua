@@ -9,6 +9,7 @@ local mobHit = "/Game/MainContent/Template/BaseBlueprint/BaseAICharacter_Mob_BP.
 local mobHitShape = "ObjectProperty:projectile@0,ObjectProperty:hitcomponent@8,StructProperty:hitposition@16,FloatProperty:damage@28"
 local mode, sequence, generation = nil, 0, 0
 local hooks = {}
+local surveyNext
 
 local function log(event, detail)
     print(prefix .. " " .. event .. " " .. (detail or "") .. "\n")
@@ -87,7 +88,7 @@ local function emit(event, detail)
     sequence = sequence + 1
     log(event, "mode=" .. mode .. " run=" .. generation .. " seq=" .. sequence
         .. " wall=" .. os.time() .. " " .. detail)
-    if mode ~= "melee" and sequence >= 120 then stop("event_limit") end
+    if mode ~= "melee" and mode ~= "survey" and sequence >= 120 then stop("event_limit") end
 end
 
 local function guarded(fn)
@@ -333,6 +334,140 @@ local function melee()
     assert(#hooks == 2, "incomplete melee observation contract; warm up with daggers near mobs and retry")
 end
 
+local function survey()
+    assert(IsInGameThread(), "survey preflight outside game thread")
+    assert(check(global .. "GetPlayerCharacter", true, true, "ObjectProperty:ReturnValue"), "player getter unavailable")
+    assert(check(projectile .. "GetCharacterOwner", true, false, "ObjectProperty:ReturnValue"), "owner getter unavailable")
+    local sampleSkill = check(global .. "GetDoingSkill", true, true, "ObjectProperty:Character,NameProperty:ReturnValue")
+    local cdoPath = genesis .. "Default__GameGlobal"
+    local function currentPlayer()
+        local cdo = StaticFindObject(cdoPath)
+        assert(valid(cdo) and cdo:GetFullName() == "GameGlobal " .. cdoPath, "missing exact GameGlobal CDO")
+        return cdo:GetPlayerCharacter(), cdo
+    end
+    local player = currentPlayer()
+    assert(derived(player, "GenesisCharacter") and name(player:GetClass()) == "hilda_BP_C", "load playable Hilda")
+    local playerId = identity(player)
+    local stages = {
+        {"daggers", {"hilda_dual_atk"}, "hilda_dual_attack"},
+        {"spear", {"hilda_spear"}, "hilda_spear"},
+        {"hammer", {"hilda_cudgel", "hilda_cudgel_fire"}, "hilda_cudgel"},
+        {"sword_shield", {"hilda_sword_atk", "hilda_shield_atk"}, "hilda_sword_attack", "hilda_shield_attack"},
+        {"bracelets", {"hilda_bracelet_atk1"}, "hilda_bracelet"},
+        {"staff", {"hilda_staff_bolt_astral"}},
+    }
+    local stage, window, reserve = 0, nil, 0
+    local seen, credited, installed = {}, {}, {}
+    local elements = {"", "_astral", "_fire", "_ice", "_thunder"}
+    local allowed = {}
+    for index, spec in ipairs(stages) do
+        allowed[index] = {}
+        for rowIndex = 3, #spec do
+            for _, element in ipairs(elements) do allowed[index][spec[rowIndex] .. element] = true end
+        end
+    end
+
+    local function instance(object)
+        return valid(object) and (identity(object) .. "#" .. name(object)) or "none"
+    end
+    local function readContext()
+        assert(IsInGameThread(), "survey callback outside game thread")
+        local pawn, cdo = currentPlayer()
+        assert(identity(pawn) == playerId, "player changed")
+        return sampleSkill and cdo:GetDoingSkill(pawn):ToString() or "unavailable"
+    end
+    local function describe(object)
+        if not derived(object, "BaseProjectile") then return "unavailable", "none", "none" end
+        local owner = object:GetCharacterOwner()
+        return object.ProjectileDataName:ToString(), instance(owner), identity(owner)
+    end
+    local function finishStage()
+        if not window then return end
+        emit("SURVEY_SUMMARY", "stage=" .. stages[stage][1] .. " raw=" .. window.raw
+            .. " unique=" .. window.unique .. " potential=" .. window.potential
+            .. " reserve=" .. reserve .. " spawns=" .. window.spawns)
+        window = nil
+    end
+
+    attach(mobHit, mobHitShape, function(context, sourceParam, componentParam, _position, damageParam)
+        if not window then return end
+        local skill = readContext()
+        local target, source = context:get(), sourceParam:get()
+        local row, owner, ownerId = describe(source)
+        local sourceId, targetId = instance(source), instance(target)
+        local pair = sourceId .. "|" .. targetId
+        local unique = sourceId ~= "none" and targetId ~= "none" and not seen[pair]
+        if unique then seen[pair] = true end
+        local exactClass = false
+        if valid(source) then
+            for _, asset in ipairs(stages[stage][2]) do
+                if source:GetClass():GetFullName() == "BlueprintGeneratedClass " .. assets
+                    .. asset .. "." .. asset .. "_C" then exactClass = true; break end
+            end
+        end
+        local potential = 0
+        if unique and not credited[pair] and exactClass and allowed[stage][row] and ownerId == playerId
+            and derived(target, "BaseAICharacter_Mob_BP_C") and identity(target) ~= playerId then
+            credited[pair], potential = true, 1
+        end
+        local before = reserve
+        reserve = math.min(20, reserve + potential)
+        window.raw = window.raw + 1
+        window.unique = window.unique + (unique and 1 or 0)
+        window.potential = window.potential + potential
+        emit("SURVEY_HIT", "stage=" .. stages[stage][1] .. " source=" .. sourceId
+            .. " row=" .. string.format("%q", row) .. " owner=" .. owner .. " player=" .. playerId
+            .. " target=" .. targetId .. " component=" .. instance(componentParam:get())
+            .. " skill_at_sample=" .. string.format("%q", skill) .. " notified_damage=" .. tostring(damageParam:get())
+            .. " unique=" .. tostring(unique) .. " potential=" .. potential
+            .. " before=" .. before .. " reserve=" .. reserve)
+    end, nil, true)
+    assert(#hooks == 1, "exact mob ProjectileHitEvent unavailable; load near mobs and retry")
+
+    local mesh = player.Mesh
+    local anim = valid(mesh) and mesh:GetAnimInstance() or nil
+    if sampleSkill and valid(anim) and name(anim:GetClass()) == "hilda_AnimBP_C" then
+        local animId = identity(anim)
+        attach(genesis .. "BaseCharacterAnimInstance:BeginDoSkill", "", function(context)
+            if not window then return end
+            assert(IsInGameThread(), "survey skill outside game thread")
+            if identity(context:get()) == animId then
+                emit("SURVEY_ACTION", "stage=" .. stages[stage][1] .. " skill=" .. string.format("%q", readContext()))
+            end
+        end, function() end)
+    end
+
+    surveyNext = function()
+        if mode ~= "survey" then return end
+        finishStage()
+        stage = stage + 1
+        local spec = stages[stage]
+        if not spec then log("SURVEY_DONE", "reserve=" .. reserve .. " use=F7"); return end
+        window = {raw = 0, unique = 0, potential = 0, spawns = 0}
+        seen = {}
+        for _, asset in ipairs(spec[2]) do
+            if not installed[asset] then
+                local before = #hooks
+                attach(assets .. asset .. "." .. asset .. "_C:ReceiveBeginPlay", "", function(context)
+                    if not window then return end
+                    local skill = readContext()
+                    local source = context:get()
+                    local row, owner = describe(source)
+                    window.spawns = window.spawns + 1
+                    emit("SURVEY_SPAWN", "stage=" .. stages[stage][1] .. " source=" .. instance(source)
+                        .. " row=" .. string.format("%q", row) .. " owner=" .. owner
+                        .. " skill_at_sample=" .. string.format("%q", skill))
+                end)
+                installed[asset] = #hooks > before
+            end
+        end
+        emit("SURVEY_STAGE", "stage=" .. spec[1] .. " reserve=" .. reserve .. " capacity=20")
+    end
+    return finishStage
+end
+
+local surveyFinish
+
 local function start(requested)
     if mode then log("BUSY", "mode=" .. mode); return end
     cleanup()
@@ -344,9 +479,10 @@ local function start(requested)
         if requested == "fire" then fire()
         elseif requested == "combat" then combat()
         elseif requested == "melee" then melee()
+        elseif requested == "survey" then surveyFinish = survey()
         else rest() end
         assert(#hooks > 0, "no compatible loaded observation points")
-        if requested ~= "melee" then
+        if requested ~= "melee" and requested ~= "survey" then
             ExecuteInGameThreadWithDelay(requested == "fire" and 45000 or requested == "combat" and 120000 or 90000, function()
                 if generation == run then stop("deadline"); cleanup() end
             end)
@@ -408,8 +544,22 @@ local ok, err = pcall(function()
         end
         return registered and reason == true
     end
-    local meleeStopAvailable = registerBare("F7", function() stop("user"); cleanup() end)
+    local meleeStopAvailable = registerBare("F7", function()
+        if mode == "survey" and surveyFinish then surveyFinish() end
+        stop("user")
+        surveyNext, surveyFinish = nil, nil
+        cleanup()
+        log("CLEANUP", "remaining=" .. #hooks)
+    end)
     if meleeStopAvailable then registerBare("F4", function() start("melee") end) end
+    if meleeStopAvailable and registerBare("F5", function()
+        if mode == "survey" and surveyNext then
+            local advanced, err = pcall(surveyNext)
+            if not advanced then stop("stage_error"); log("ERROR", tostring(err):sub(1, 180)); cleanup() end
+        end
+    end) then
+        registerBare("F6", function() start("survey") end)
+    end
 
     -- One-shot independent scheduler check even if no key callback is delivered.
     local tickOk, tickErr = pcall(ExecuteInGameThread, function()
@@ -421,5 +571,5 @@ local ok, err = pcall(function()
         log("ENGINE_TICK_PING_ERROR", tostring(tickErr):sub(1, 180))
     end
 end)
-if ok then log("ARMED", "F4=melee F7=stop (see BARE_KEY_*); CtrlShiftF8=combat CtrlShiftF9=rest CtrlShiftF10=stop")
+if ok then log("ARMED", "F4=melee F5=survey_next F6=survey F7=stop (see BARE_KEY_*); CtrlShiftF8=combat CtrlShiftF9=rest CtrlShiftF10=stop")
 else log("UNAVAILABLE", tostring(err):sub(1, 180)) end
