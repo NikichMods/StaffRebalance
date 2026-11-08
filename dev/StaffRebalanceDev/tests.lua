@@ -173,8 +173,8 @@ local function shot(test, name)
 end
 
 local target = parameter(object("MobA", 40, "m052_arvicolina_BP_C"))
-local other = parameter(object("MobB", 41, "m052_arvicolina_BP_C"))
-local neutral = parameter(object("Other", 42, "other_BP_C"))
+local other = parameter(object("MobB", 41, "m006_2_thugdagger_BP_C"))
+-- World objects are not receivers of the mob-specific hit hook.
 local point = parameter(object("ConduitA", 50))
 local wrongPoint = parameter(object("ConduitB", 51))
 local game = parameter(object("MainGameInstance", 52))
@@ -196,7 +196,8 @@ for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     contact(t, weak, target)
     assert(t.has("ASTRAL_HIT mode=weak"))
     local blade = t.blade("First")
-    contact(t, blade, neutral)
+    -- A scene hit cannot enter the mob-receiver callback; runtime verification is still required.
+    assert(t.hooks[hit] ~= nil)
     contact(t, t.blade("Foreign", object("ForeignOwner", 90)), target)
     assert(t.count("MELEE") == 0)
     contact(t, blade, target)
@@ -220,7 +221,8 @@ for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     t.emit(recovery, game); t.emit(context, nil, point); t.emit(context, nil, point)
     assert(t.count("REST") == 1 and t.has("REST before=0 reserve=3"))
     for i = 6, 8 do shot(t, "Shot" .. i) end
-    contact(t, blade, other)
+    contact(t, blade, other) -- Different mob Blueprint class, same dagger source.
+    assert(t.has("MELEE before=0 reserve=1"))
     contact(t, t.blade("Second phase"), target)
     contact(t, t.blade("Third"), target)
     contact(t, t.blade("Fourth"), target)

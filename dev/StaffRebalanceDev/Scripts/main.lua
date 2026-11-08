@@ -351,8 +351,8 @@ local function hit(pawn, context, sourceParam, _component, _position, damagePara
     end
     if not exact(source, daggers) or source.ProjectileDataName:ToString() ~= "hilda_dual_attack_astral"
         or not owned(source, pawn) then return end
-    -- Only the observed enemy class and the native AffectEnemy dagger row are in scope.
-    if target:GetClass():GetFName():ToString() ~= "m052_arvicolina_BP_C" then return end
+    -- The hooked BaseAICharacter_Mob_BP_C receiver is a combat character, not scenery.
+    -- The accepted contact contract does not require an additional faction filter.
     local damage = damageParam:get()
     assert(finite(damage), "invalid_melee_notification")
     local sourceId, targetId = id(source), id(target)
