@@ -100,8 +100,8 @@ local function setup(options)
     e.StaticFindObject = function(name) return functions[name] end
     e.EngineTickAvailable = true
     e.EGameThreadMethod = {EngineTick = 1}
-    e.Key = {F4 = 4, F7 = 7}
-    e.IsKeyBindRegistered = function(key) return options.collision and key == 4 or false end
+    e.Key = {F3 = 3, F7 = 7}
+    e.IsKeyBindRegistered = function(key) return options.collision and key == 3 or false end
     e.RegisterKeyBind = function(key, callback) keys[key] = callback end
     e.ExecuteInGameThread = function(callback, method) assert(method == 1); callback() end
     e.IsInGameThread = function() return not options.wrongThread end
@@ -198,7 +198,7 @@ end
 for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     local t = setup({skill = skill})
     assert(not next(t.hooks))
-    t.keys[4]()
+    t.keys[3]()
     assert(t.has("START reserve=3 hooks=11") and t.has("diag_total=0 diag_capacity=50"))
     assert(t.count("SHOT") == 0)
     assert(shot(t, "One").rate == 0.875 and t.count("SHOT") == 1)
@@ -242,7 +242,7 @@ for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     contact(t, t.blade("Fourth"), target)
     assert(t.has("MELEE before=2 reserve=3") and t.has("MELEE before=3 reserve=3"))
     t.keys[7](); assert(not next(t.hooks) and t.has("STOP reserve=3 hooks_remaining=0"))
-    t.keys[4](); assert(not next(t.hooks))
+    t.keys[3](); assert(not next(t.hooks))
 end
 
 -- Live-confirmed first melee classes and statically mapped combo class/row pairs.
@@ -254,7 +254,7 @@ for _, case in ipairs({
 }) do
     local kind, expectedWeapon = case[1], case[2]
     local t = setup({skill = "hilda_staff_atk1"})
-    t.keys[4]()
+    t.keys[3]()
     for i = 1, 3 do shot(t, kind .. "Drain" .. i) end
     assert(t.has("mode=strong before=1 reserve=0"))
     local first = t.melee(kind .. "First", kind)
@@ -286,7 +286,7 @@ end
 -- reaches 50 and remains capped without requiring staff shots between melee hits.
 do
     local t = setup({skill = "hilda_staff_atk1"})
-    t.keys[4]()
+    t.keys[3]()
     for i = 1, 51 do
         contact(t, t.melee("Audit" .. i, "bracelets_4"), target)
     end
@@ -298,7 +298,7 @@ end
 
 do
     local t = setup({skill = "hilda_staff_atk2"})
-    t.keys[4]()
+    t.keys[3]()
     assert(shot(t, "No native Begin").rate == 0.875)
     assert(t.count("SHOT") == 0 and t.has("SKIP reason=unverified_combo_boundary"))
     t.setSkill("hilda_staff_atk1")
@@ -308,7 +308,7 @@ do
 end
 do
     local t = setup({saved = 1})
-    t.keys[4]()
+    t.keys[3]()
     assert(shot(t, "e804").rate == 0.875)
     assert(t.count("SHOT") == 0 and t.has("SKIP reason=unverified_e804"))
     t.setSaved(0)
@@ -319,7 +319,7 @@ end
 
 for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     local t = setup({skill = skill})
-    t.keys[4]()
+    t.keys[3]()
     local first = t.bolt("First")
     t.emit(begin, parameter(first))
     assert(first.rate == 0.875 and t.has("skill=" .. skill .. " mode=strong before=3 reserve=2"))
@@ -339,7 +339,7 @@ end
 
 do
     local t = setup({writeError = true})
-    t.keys[4]()
+    t.keys[3]()
     for i = 1, 3 do shot(t, "Strong" .. i) end
     assert(shot(t, "Rollback").rate == 0.875)
     assert(t.count("SHOT") == 3 and t.has("ROLLBACK_OK") and t.has("FAILED"))
@@ -347,7 +347,7 @@ end
 
 for _, options in ipairs({{badShape = true}, {registrationError = true}, {wrongThread = true}}) do
     local t = setup(options)
-    t.keys[4]()
+    t.keys[3]()
     assert(not next(t.hooks) and not t.has("START"))
 end
 do
@@ -357,7 +357,7 @@ end
 -- New dev-only coverage. Historical Reserve Slice 01 remains unchanged.
 do
     local t = setup()
-    t.keys[4]()
+    t.keys[3]()
     -- One earlier first-step bolt leaves exactly one charge.
     shot(t, "FirstOne")
     shot(t, "FirstTwo")
@@ -383,7 +383,7 @@ do
 end
 do
     local t = setup()
-    t.keys[4]()
+    t.keys[3]()
     t.beginStep("hilda_staff_atk2")
     t.endStep() -- No bolt: no debit.
     assert(t.count("SHOT") == 0 and t.has("mode=no_bolt"))
@@ -404,7 +404,7 @@ do
 end
 do
     local t = setup()
-    t.keys[4]()
+    t.keys[3]()
     t.beginStep("hilda_staff_atk2")
     t.setSkill("hilda_staff_atk3")
     assert(shot(t, "Wrong-skill").rate == 0.875 and t.count("SHOT") == 0)
@@ -423,7 +423,7 @@ end
 -- Fire changes stay isolated in these dev-only tests. Real UE4SS integration is a separate gate.
 do
     local t = setup({missingFire = true})
-    t.keys[4]()
+    t.keys[3]()
     assert(t.has("FIRE_UNAVAILABLE reason=missing:"))
     assert(t.has("START reserve=3 hooks=9 fire=unavailable"))
     assert(shot(t, "AstralWithFireClassUnloaded").rate == 0.875)
@@ -433,7 +433,7 @@ do
 end
 do
     local t = setup()
-    t.keys[4]()
+    t.keys[3]()
     local skills = {"hilda_staff_atk1_idle_fire", "hilda_staff_atk2_fire", "hilda_staff_atk3_fire"}
     local bolts = {}
     for i, skill in ipairs(skills) do
@@ -486,7 +486,7 @@ do
 end
 do
     local t = setup()
-    t.keys[4]()
+    t.keys[3]()
     local b = t.fireBolt("NoBoundary")
     t.setSkill("hilda_staff_atk2_fire")
     t.emit(fireBegin, parameter(b))
@@ -523,7 +523,7 @@ do
 end
 do
     local t = setup()
-    t.keys[4]()
+    t.keys[3]()
     for i=1,3 do
         t.beginStep("hilda_staff_atk1_fire")
         t.emit(fireBegin, parameter(t.fireBolt("DrainFire" .. i)))

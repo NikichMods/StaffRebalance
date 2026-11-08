@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MPL-2.0
--- Dev candidate, not production. F4=start, F7=stop. Astral/Fire basic actions share the reserve.
+-- Dev candidate, not production. F3=start, F7=stop. Astral/Fire basic actions share the reserve.
 local prefix = "STAFF_RESERVE01"
 local assets = "/Game/MainContent/Act/Skill_BP/PlayerSkill_BP/"
 local astral = assets .. "hilda_staff_bolt_astral.hilda_staff_bolt_astral_C"
@@ -483,7 +483,7 @@ local function start()
         local ready, reason = check(table.unpack(spec))
         if not ready then
             fireReady = false
-            log("FIRE_UNAVAILABLE", "reason=" .. reason .. " warmup_fire_before_F4=true")
+            log("FIRE_UNAVAILABLE", "reason=" .. reason .. " warmup_fire_before_F3=true")
             break
         end
     end
@@ -544,11 +544,11 @@ local ok, err = pcall(function()
         "RegisterKeyBind", "IsKeyBindRegistered", "ExecuteInGameThread", "IsInGameThread"}) do
         assert(type(_G[name]) == "function", "missing_api:" .. name)
     end
-    for _, key in ipairs({Key.F4, Key.F7}) do
+    for _, key in ipairs({Key.F3, Key.F7}) do
         assert(not IsKeyBindRegistered(key), "key_collision")
     end
     bind(Key.F7, stop)
-    bind(Key.F4, start)
+    bind(Key.F3, start)
 end)
-if ok then log("LOADED", "F4=start F7=stop astral_fire_basic_shared_reserve=true")
+if ok then log("LOADED", "F3=start F7=stop astral_fire_basic_shared_reserve=true")
 else fail(err) end
