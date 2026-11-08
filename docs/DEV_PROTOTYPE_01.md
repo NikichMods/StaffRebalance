@@ -233,3 +233,22 @@ F7 и контрольный взмах сняли девять script hooks и 
 **Следующий game gate (Fire):** в одном коротком сеансе с фактически выбранной огненной стихией выполнить полную 4-шаговую обычную серию кинжалов, полную серию браслетов, и по одному обычному попаданию копьём, молотом и мечом со щитом. Проверить, что `MELEE element=fire` реально появляется для всех **восьми семейств class/row**; особенно `daggers_plus`, `bracelets_atk3`, `bracelets_atk4`. В логе источник определяется full source ID, weapon/element — из exact guards. Диагностический счётчик считается независимо от настоящего резерва 3: не тратить заряды посохом ради освобождения capacity. Результат `+5` или `+4` **не является фиксированным требованием** для Fire: промахи, повторные тики и число попавших экземпляров влияют на наблюдаемую кратность. При `NOT VERIFIED` отличить промах/прерванное комбо от неработающего фильтра. Не нужны предварительный observer или отдельная большая Fire-ревизия. Учесть конфликт hotkey: текущий dev **F3=start, F7=stop**. По завершении F7 и контрольное действие для фактического снятия native pre/post хуков, закрытый лог, отключение только StaffRebalanceDev; другие моды и сохранения не менять.
 
 **Вне этого gate:** Ice/Thunder live-проверки — только после доступности в игре, а Ice/Thunder *посоха* — независимое расширение уронного механизма. Production остаётся BLOCKED.
+
+#### Игровой результат Fire melee — 2026-11-09
+
+**Dev integration PASS, 8/8 семейств.** Исполняемый исходник `a882176e2b8a4768c4ed2ab6a4aaa48ce5883579`, установленный Lua SHA-256 `65adc698cba6d515b816dacdbdf68155039c3cc53dd140a2d53d898f04e97c69`. Закрытый UE4SS.log сохранён локально, SHA-256 `93970afbab48180099b212967d63c7a58c38cc64bfd5fb750df870e0cee2ac6b`. F3 дал `START reserve=3 hooks=11 diag_total=0 diag_capacity=50` (736). Все кредиты получены по одному экземпляру `m008_thugwaraxe_BP_C`. Точный row и CharacterOwner Хильда подтверждаются guards сверенного Lua перед `MELEE element=fire`. Лог отдельно печатает класс, экземпляры, weapon и element.
+
+| Класс / Fire row | Вердикт | Кредиты | DUPLICATE | Строки |
+| --- | --- | ---: | ---: | --- |
+| `hilda_dual_atk_C` / `hilda_dual_attack_fire` | PASS | 4 | 0 | 758–766 |
+| `hilda_dual_atk_plus_C` / `hilda_dual_atk_plus_fire` | PASS | 1 | 0 | 767 |
+| `hilda_bracelet_atk1_C` / `hilda_bracelet_fire` | PASS | 2 | 3 | 769–773 |
+| `hilda_bracelet_atk3_C` / `hilda_bracelet_atk3_fire` | PASS | 1 | 0 | 774 |
+| `hilda_bracelet_atk4_C` / `hilda_bracelet_atk4_fire` | PASS | 2 | 4 | 776–781 |
+| `hilda_spear_C` / `hilda_spear_fire` | PASS | 1 | 0 | 782 |
+| `hilda_cudgel_fire_C` / `hilda_cudgel_fire` | PASS | 1 | 0 | 783 |
+| `hilda_sword_atk_C` / `hilda_sword_attack_fire` | PASS | 1 | 0 | 787 |
+
+`DIAG_SUMMARY total=13 capacity=50 daggers=5 spear=1 hammer=1 sword_shield=1 bracelets=5` (801). Все семь `DUPLICATE` браслетов повторяют уже зачтённые пары и не увеличивают счётчик. На четвёртом шаге два разных экземпляра получили по кредиту, четыре повтора относятся ко второму. Перед `STOP` лог также содержит один Fire-выстрел, который уменьшил игровой резерв с 3 до 2 (788–794). Диагностический счётчик остался 13.
+
+**Очистка PASS.** F7 сняла девять script hooks (ID 10–18) и дала `STOP reserve=2 hooks_remaining=0` (802–811). После STOP UE4SS записал снятие обеих native pre/post пар `BeginDoSkill` и `EndDoSkill` (812–815). SHA установленного Lua совпал после выхода. Отключён только StaffRebalanceDev. Остальные маркеры, `mods.txt` и настройки UE4SS совпали со снимком перед тестом. Ice/Thunder остаются без live-проверки, production BLOCKED.
