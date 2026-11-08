@@ -7,6 +7,8 @@ local fireBolt = assets .. "hilda_staff_bolt_fire.hilda_staff_bolt_fire_C"
 local fireSphere = "/Game/MainContent/Act/Skill_BP/CommonSkill_BP/sphere_200.sphere_200_C"
 local fireBegin = fireBolt .. ":ReceiveBeginPlay"
 local fireSphereBegin = fireSphere .. ":ReceiveBeginPlay"
+local thunderBolt = assets .. "hilda_staff_bolt_thunder.hilda_staff_bolt_thunder_C"
+local thunderBegin = thunderBolt .. ":ReceiveBeginPlay"
 local daggers = assets .. "hilda_dual_atk.hilda_dual_atk_C"
 local otherMelee = {
     daggers_base = {daggers, "hilda_dual_attack_astral"},
@@ -81,6 +83,7 @@ local function setup(options)
     reflected("/Script/Genesis.BaseProjectile:GetCharacterOwner", 0x400, {result})
     reflected("/Script/Engine.Actor:GetOwner", 0x400, {result})
     reflected(begin, 0)
+    if not options.missingThunder then reflected(thunderBegin, 0) end
     if not options.missingFire then
         reflected(fireBegin, 0)
         reflected(fireSphereBegin, 0)
@@ -154,6 +157,9 @@ local function setup(options)
         fireBolt = function(name, owner, key)
             return source(name, fireBolt, key or "hilda_staff_bolt_fire", owner)
         end,
+        thunderBolt = function(name, owner, key)
+            return source(name, thunderBolt, key or "hilda_staff_bolt_thunder", owner)
+        end,
         fireSphere = function(name, parent, owner, key)
             local s = source(name, fireSphere, key or "hilda_staff_bolt_fire_explosion", owner, 0.9)
             s.GetOwner = function() return parent end
@@ -200,7 +206,7 @@ for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     local t = setup({skill = skill})
     assert(not next(t.hooks))
     t.keys[3]()
-    assert(t.has("START reserve=3 hooks=11") and t.has("diag_total=0 diag_capacity=50"))
+    assert(t.has("START reserve=3 hooks=12") and t.has("diag_total=0 diag_capacity=50"))
     assert(t.count("SHOT") == 0)
     assert(shot(t, "One").rate == 0.875 and t.count("SHOT") == 1)
     assert(shot(t, "Two").rate == 0.875 and shot(t, "Three").rate == 0.875)
@@ -482,7 +488,7 @@ do
     local t = setup({missingFire = true})
     t.keys[3]()
     assert(t.has("FIRE_UNAVAILABLE reason=missing:"))
-    assert(t.has("START reserve=3 hooks=9 fire=unavailable"))
+    assert(t.has("START reserve=3 hooks=10 fire=unavailable thunder=ready"))
     assert(shot(t, "AstralWithFireClassUnloaded").rate == 0.875)
     assert(t.has("mode=strong before=3 reserve=2"))
     t.keys[7]()
@@ -595,4 +601,75 @@ do
     t.endStep()
     t.keys[7]()
 end
-print("PASS: dev Astral/Fire basic shared reserve, parent-linked explosion mode, legacy guards")
+-- Thunder mock-only: native action boundary, one debit per 1/2/3 bolt
+-- sequence, common mode, owner/row/special rejection and unload fallback.
+do
+    local s = setup({missingThunder = true})
+    s.keys[3]()
+    assert(s.has("THUNDER_UNAVAILABLE reason=missing:")
+        and s.has("START reserve=3 hooks=11 fire=ready thunder=unavailable"))
+    assert(shot(s, "NoThunderYet").rate == 0.875)
+    s.keys[7]()
+    assert(not next(s.hooks))
+end
+do
+    local s = setup()
+    s.keys[3]()
+    for step, amount in ipairs({1, 2, 3}) do
+        local skill = "hilda_staff_atk" .. step .. "_thunder"
+        s.beginStep(skill)
+        for i = 1, amount do
+            local bolt = s.thunderBolt("Thunder" .. step .. "-" .. i)
+            s.emit(thunderBegin, parameter(bolt))
+            assert(bolt.rate == 0.875)
+            contact(s, bolt, target)
+        end
+        s.endStep()
+    end
+    assert(s.count("THUNDER_BOLT") == 6 and s.count("THUNDER_HIT") == 6)
+    assert(s.has("THUNDER_BOLT skill=hilda_staff_atk3_thunder mode=strong before=0 reserve=0 debit=0"))
+    s.beginStep("hilda_staff_atk2_thunder")
+    for i = 1, 2 do
+        local bolt = s.thunderBolt("WeakThunder" .. i)
+        s.emit(thunderBegin, parameter(bolt))
+        assert(bolt.rate == string.unpack("f", string.pack("f", 0.4375)))
+    end
+    s.endStep()
+    contact(s, s.blade("RestoreThunder"), target)
+    s.beginStep("hilda_staff_atk1_idle_thunder")
+    s.emit(thunderBegin, parameter(s.thunderBolt("RestoredThunder")))
+    assert(s.has("THUNDER_BOLT skill=hilda_staff_atk1_idle_thunder mode=strong before=1 reserve=0 debit=1"))
+    s.endStep()
+    s.keys[7]()
+    assert(not next(s.hooks) and s.has("hooks_remaining=0"))
+end
+do
+    local s = setup()
+    s.keys[3]()
+    s.setSkill("hilda_staff_atk2_thunder")
+    s.emit(thunderBegin, parameter(s.thunderBolt("NoBoundary")))
+    assert(s.count("THUNDER_BOLT") == 0 and s.has("reason=unverified_thunder_action"))
+    s.beginStep("hilda_staff_atk2_thunder")
+    s.emit(thunderBegin, parameter(s.thunderBolt("Foreign", object("OtherOwner", 100))))
+    s.emit(thunderBegin, parameter(s.thunderBolt("BadRow", nil, "other_thunder")))
+    assert(s.count("THUNDER_BOLT") == 0)
+    local first = s.thunderBolt("First")
+    s.emit(thunderBegin, parameter(first))
+    s.emit(thunderBegin, parameter(first))
+    s.emit(thunderBegin, parameter(s.thunderBolt("Second")))
+    assert(s.count("THUNDER_BOLT") == 2 and s.has("reason=duplicate_thunder_source"))
+    s.endStep()
+    s.beginStep("hilda_staff_atk2_thunder")
+    s.setSaved(1)
+    s.emit(thunderBegin, parameter(s.thunderBolt("Talent")))
+    assert(s.has("reason=unverified_e804_thunder"))
+    s.setSaved(0)
+    s.emit(thunderBegin, parameter(s.thunderBolt("TalentNext")))
+    assert(s.has("reason=unverified_e804_thunder_combo") and s.count("THUNDER_BOLT") == 2)
+    s.endStep()
+    s.beginStep("hilda_staff_other_thunder")
+    s.emit(thunderBegin, parameter(s.thunderBolt("Special")))
+    assert(s.count("THUNDER_BOLT") == 2)
+    s.keys[7]()
+end
+print("PASS: dev Astral/Fire/Thunder basic shared reserve, parent-linked explosion mode, legacy guards")

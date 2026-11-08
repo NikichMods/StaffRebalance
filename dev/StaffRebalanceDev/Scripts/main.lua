@@ -1,10 +1,15 @@
 -- SPDX-License-Identifier: MPL-2.0
--- Dev candidate, not production. F3=start, F7=stop. Astral/Fire basic actions share the reserve.
+-- Dev candidate, not production. F3=start, F7=stop. Astral/Fire/Thunder basics share reserve.
 local prefix = "STAFF_RESERVE01"
 local assets = "/Game/MainContent/Act/Skill_BP/PlayerSkill_BP/"
 local astral = assets .. "hilda_staff_bolt_astral.hilda_staff_bolt_astral_C"
 local fireBolt = assets .. "hilda_staff_bolt_fire.hilda_staff_bolt_fire_C"
 local fireSphere = "/Game/MainContent/Act/Skill_BP/CommonSkill_BP/sphere_200.sphere_200_C"
+local thunderBolt = assets .. "hilda_staff_bolt_thunder.hilda_staff_bolt_thunder_C"
+local thunderSkills = {
+    hilda_staff_atk1_idle_thunder = true, hilda_staff_atk1_thunder = true,
+    hilda_staff_atk2_thunder = true, hilda_staff_atk3_thunder = true,
+}
 local fireSkills = {
     hilda_staff_atk1_idle_fire = true,
     hilda_staff_atk1_fire = true,
@@ -174,7 +179,8 @@ local function comboBegin(_, context)
     local skill = anim:GetDoingSkill():ToString()
     -- An independent Begin replaces the prior action, including an interrupted one.
     session.combo = nil
-    if skill == "hilda_staff_atk2" or skill == "hilda_staff_atk3" or fireSkills[skill] then
+    if skill == "hilda_staff_atk2" or skill == "hilda_staff_atk3"
+        or fireSkills[skill] or thunderSkills[skill] then
         session.combo = {skill = skill}
         log("COMBO_BEGIN", "skill=" .. skill)
     end
@@ -267,6 +273,69 @@ local function astralBegin(pawn, context)
     log("SHOT", "skill=" .. skill .. " mode=" .. mode
         .. " before=" .. before .. " reserve=" .. session.reserve .. " rate=" .. rate
         .. " effective=" .. effective .. " debit=" .. debit .. " source=" .. sourceId)
+end
+
+-- Thunder: 1/2/3 direct bolts per ordinary skill action. Debit only when
+-- the first bolt of an authenticated native BeginDoSkill execution appears.
+-- Dev candidate: Thunder owner, action delivery and damage need live verification.
+local function thunderBegin(pawn, context)
+    local bolt = context:get()
+    assert(exact(bolt, thunderBolt), "unexpected_thunder_context")
+    if not owned(bolt, pawn) or bolt.ProjectileDataName:ToString() ~= "hilda_staff_bolt_thunder" then
+        log("SKIP", "reason=foreign_or_unsupported_thunder_bolt")
+        return
+    end
+    local sourceId = id(bolt)
+    if session.shots[sourceId] then
+        log("SKIP", "reason=duplicate_thunder_source source=" .. sourceId)
+        return
+    end
+    local skill = StaticFindObject(GLOBAL):GetDoingSkill(pawn):ToString()
+    if not thunderSkills[skill] then
+        log("SKIP", "reason=unsupported_thunder_skill skill=" .. skill)
+        return
+    end
+    local combo = session.combo
+    local mesh = pawn.Mesh
+    local anim = valid(mesh) and mesh:GetAnimInstance()
+    if not combo or combo.skill ~= skill or not valid(anim) or id(anim) ~= session.anim then
+        log("SKIP", "reason=unverified_thunder_action skill=" .. skill)
+        return
+    end
+    if combo.mode == "skip_e804" then
+        log("SKIP", "reason=unverified_e804_thunder_combo source=" .. sourceId)
+        return
+    end
+    assert(field(bolt, "DamageRate", 0x2C4))
+    assert(field(bolt, "Original Damage Rate"))
+    local rate = get(bolt, "DamageRate")
+    assert(rate > 0, "invalid_thunder_rate")
+    if get(bolt, "Original Damage Rate") ~= 0 then
+        combo.mode = "skip_e804"
+        log("SKIP", "reason=unverified_e804_thunder source=" .. sourceId)
+        return
+    end
+    local before = session.reserve
+    local first = not combo.mode
+    local mode = combo.mode or (before > 0 and "strong" or "weak")
+    local effective = rate
+    if mode == "weak" then
+        effective = string.unpack("f", string.pack("f", rate * 0.5))
+        assert(finite(effective) and effective > 0 and effective < rate, "invalid_weak_thunder_rate")
+        local ok, err = pcall(write, bolt, "DamageRate", effective)
+        if not ok then
+            local restored = pcall(write, bolt, "DamageRate", rate)
+            log(restored and "ROLLBACK_OK" or "ROLLBACK_FAILED", "source=" .. sourceId)
+            error(err)
+        end
+    end
+    local debit = first and mode == "strong" and 1 or 0
+    if debit == 1 then session.reserve = before - 1 end
+    if first then combo.mode = mode end
+    session.shots[sourceId] = "thunder_" .. mode
+    log("THUNDER_BOLT", "skill=" .. skill .. " mode=" .. mode .. " before=" .. before
+        .. " reserve=" .. session.reserve .. " debit=" .. debit .. " rate=" .. rate
+        .. " effective=" .. effective .. " source=" .. sourceId)
 end
 
 local function fireBegin(pawn, context)
@@ -380,6 +449,17 @@ local function hit(pawn, context, sourceParam, _component, _position, damagePara
             assert(finite(damage), "invalid_fire_notification")
             log("FIRE_HIT", "mode=" .. mode .. " notified_damage=" .. damage
                 .. " rate=" .. get(source, "DamageRate") .. " source=" .. id(source) .. " target=" .. id(target))
+        end
+        return
+    end
+    if exact(source, thunderBolt) then
+        local sourceId = id(source)
+        local mode = session.shots[sourceId]
+        if mode == "thunder_strong" or mode == "thunder_weak" then
+            local damage = damageParam:get()
+            assert(finite(damage), "invalid_thunder_notification")
+            log("THUNDER_HIT", "mode=" .. mode .. " notified_damage=" .. damage
+                .. " rate=" .. get(source, "DamageRate") .. " source=" .. sourceId .. " target=" .. id(target))
         end
         return
     end
@@ -501,6 +581,13 @@ local function start()
         routes[#routes + 1] = {fireBolt .. ":ReceiveBeginPlay", "", fireBegin}
         routes[#routes + 1] = {fireSphere .. ":ReceiveBeginPlay", "", fireExplosion}
     end
+    -- Thunder class may remain unloaded in this save; keep existing elements operational.
+    local thunderReady, thunderReason = check(thunderBolt .. ":ReceiveBeginPlay", false, false, "")
+    if thunderReady then
+        routes[#routes + 1] = {thunderBolt .. ":ReceiveBeginPlay", "", thunderBegin}
+    else
+        log("THUNDER_UNAVAILABLE", "reason=" .. thunderReason .. " warmup_thunder_before_F3=true")
+    end
     local ok, err = pcall(function()
         for _, route in ipairs(routes) do attach(route[1], route[3]) end
         attachNative(animSkill .. "BeginDoSkill", function() end, comboBegin)
@@ -516,6 +603,7 @@ local function start()
         diagnostic = {total = 0, byWeapon = {}}}
     log("START", "reserve=" .. capacity .. " hooks=" .. #hooks
         .. " fire=" .. (fireReady and "ready" or "unavailable")
+        .. " thunder=" .. (thunderReady and "ready" or "unavailable")
         .. " diag_total=0 diag_capacity=" .. diagnosticCapacity)
 end
 
