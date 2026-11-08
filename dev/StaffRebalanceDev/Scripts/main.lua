@@ -32,7 +32,8 @@ local recovery = root .. "MainGameInstance_BP.MainGameInstance_BP_C:RecoverPlaye
 local recoveryContext = root .. "GameGlobalBlueprintLibrary.GameGlobalBlueprintLibrary_C:RecoverPlayerAndScene"
 local GLOBAL = "/Script/Genesis.Default__GameGlobal"
 local animSkill = "/Script/Genesis.BaseCharacterAnimInstance:"
-local capacity = 3
+local capacity = 3 -- unchanged gameplay reserve
+local diagnosticCapacity = 50 -- log-only, counts eligible unique contacts independent of gameplay cap
 local hooks = {}
 local session, closed
 
@@ -387,14 +388,19 @@ local function hit(pawn, context, sourceParam, _component, _position, damagePara
         session.contacts[sourceId] = seen
     end
     if seen[targetId] then
-        log("DUPLICATE", "reserve=" .. session.reserve .. " source=" .. sourceId .. " target=" .. targetId)
+        log("DUPLICATE", "reserve=" .. session.reserve .. " source=" .. sourceId .. " target=" .. targetId
+            .. " diag_total=" .. session.diagnostic.total)
         return
     end
     seen[targetId] = true
+    local diagnostic = session.diagnostic
+    diagnostic.total = math.min(diagnosticCapacity, diagnostic.total + 1)
+    diagnostic.byWeapon[kind] = math.min(diagnosticCapacity, (diagnostic.byWeapon[kind] or 0) + 1)
     local before = session.reserve
     session.reserve = math.min(capacity, before + 1)
     log("MELEE", "before=" .. before .. " reserve=" .. session.reserve .. " notified_damage=" .. damage
-        .. " source=" .. sourceId .. " target=" .. targetId .. " weapon=" .. kind)
+        .. " source=" .. sourceId .. " target=" .. targetId .. " weapon=" .. kind
+        .. " diag_total=" .. diagnostic.total .. " diag_weapon=" .. diagnostic.byWeapon[kind])
 end
 
 local function requestRest(_, context)
@@ -496,13 +502,24 @@ local function start()
         return
     end
     session = {player = id(pawn), anim = id(anim), reserve = capacity,
-        shots = {}, fireParents = {}, contacts = {}, skippedSkills = {}}
+        shots = {}, fireParents = {}, contacts = {}, skippedSkills = {},
+        diagnostic = {total = 0, byWeapon = {}}}
     log("START", "reserve=" .. capacity .. " hooks=" .. #hooks
-        .. " fire=" .. (fireReady and "ready" or "unavailable"))
+        .. " fire=" .. (fireReady and "ready" or "unavailable")
+        .. " diag_total=0 diag_capacity=" .. diagnosticCapacity)
 end
 
 local function stop()
     local reserve = session and session.reserve or "inactive"
+    if session and session.diagnostic then
+        local d = session.diagnostic
+        log("DIAG_SUMMARY", "total=" .. d.total .. " capacity=" .. diagnosticCapacity
+            .. " daggers=" .. (d.byWeapon.daggers or 0)
+            .. " spear=" .. (d.byWeapon.spear or 0)
+            .. " hammer=" .. (d.byWeapon.hammer or 0)
+            .. " sword_shield=" .. (d.byWeapon.sword_shield or 0)
+            .. " bracelets=" .. (d.byWeapon.bracelets or 0))
+    end
     session, closed = nil, true
     cleanup()
     log("STOP", "reserve=" .. reserve .. " hooks_remaining=" .. #hooks)

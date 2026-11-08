@@ -199,7 +199,7 @@ for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     local t = setup({skill = skill})
     assert(not next(t.hooks))
     t.keys[4]()
-    assert(t.has("START reserve=3 hooks=11"))
+    assert(t.has("START reserve=3 hooks=11") and t.has("diag_total=0 diag_capacity=50"))
     assert(t.count("SHOT") == 0)
     assert(shot(t, "One").rate == 0.875 and t.count("SHOT") == 1)
     assert(shot(t, "Two").rate == 0.875 and shot(t, "Three").rate == 0.875)
@@ -215,7 +215,8 @@ for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     assert(t.count("MELEE") == 0)
     contact(t, blade, target)
     contact(t, blade, target)
-    assert(t.has("MELEE before=0 reserve=1") and t.has("DUPLICATE reserve=1"))
+    assert(t.has("MELEE before=0 reserve=1") and t.has("DUPLICATE reserve=1")
+        and t.has("diag_total=1 diag_weapon=1"))
     assert(shot(t, "Five").rate == 0.875 and t.has("mode=strong before=1 reserve=0"))
     t.emit(conduit .. "Interact_EndUse", point)
     t.emit(recovery, game); t.emit(context, nil, point)
@@ -259,9 +260,11 @@ for _, case in ipairs({
     local first = t.melee(kind .. "First", kind)
     contact(t, first, target)
     assert(t.count("MELEE") == 1 and t.has("MELEE before=0 reserve=1")
-        and t.has("weapon=" .. expectedWeapon))
+        and t.has("weapon=" .. expectedWeapon)
+        and t.has("diag_total=1 diag_weapon=1"))
     contact(t, first, target) -- Bracelet repeated callback: do not double-credit one source-target pair.
-    assert(t.count("MELEE") == 1 and t.has("DUPLICATE reserve=1"))
+    assert(t.count("MELEE") == 1 and t.has("DUPLICATE reserve=1")
+        and t.has("DUPLICATE reserve=1 source=") and t.has("diag_total=1"))
     contact(t, t.melee(kind .. "WrongRow", kind, nil, "other_melee_row"), target)
     contact(t, t.melee(kind .. "Foreign", kind, object("ForeignOwner", 91)), target)
     assert(t.count("MELEE") == 1)
@@ -270,11 +273,27 @@ for _, case in ipairs({
     contact(t, t.melee(kind .. "NextSource", kind), target)
     assert(t.count("MELEE") == 3 and t.has("MELEE before=2 reserve=3"))
     contact(t, t.melee(kind .. "OverCap", kind), target)
-    assert(t.count("MELEE") == 4 and t.has("MELEE before=3 reserve=3"))
+    assert(t.count("MELEE") == 4 and t.has("MELEE before=3 reserve=3")
+        and t.has("diag_total=4 diag_weapon=4"))
     contact(t, t.bolt(kind .. "StaffNegative"), target)
     assert(t.count("MELEE") == 4)
     t.keys[7]()
-    assert(not next(t.hooks) and t.has("STOP reserve=3 hooks_remaining=0"))
+    assert(not next(t.hooks) and t.has("STOP reserve=3 hooks_remaining=0")
+        and t.has("DIAG_SUMMARY total=4 capacity=50"))
+end
+
+-- Saturation is a gameplay cap only. The independent diagnostic counter
+-- reaches 50 and remains capped without requiring staff shots between melee hits.
+do
+    local t = setup({skill = "hilda_staff_atk1"})
+    t.keys[4]()
+    for i = 1, 51 do
+        contact(t, t.melee("Audit" .. i, "bracelets_4"), target)
+    end
+    assert(t.count("MELEE") == 51 and t.has("MELEE before=3 reserve=3")
+        and t.has("diag_total=50 diag_weapon=50"))
+    t.keys[7]()
+    assert(t.has("DIAG_SUMMARY total=50 capacity=50") and t.has("bracelets=50"))
 end
 
 do
