@@ -9,6 +9,9 @@ local fireBegin = fireBolt .. ":ReceiveBeginPlay"
 local fireSphereBegin = fireSphere .. ":ReceiveBeginPlay"
 local daggers = assets .. "hilda_dual_atk.hilda_dual_atk_C"
 local otherMelee = {
+    daggers_plus = {assets .. "hilda_dual_atk_plus.hilda_dual_atk_plus_C", "hilda_dual_atk_plus_astral"},
+    bracelets_3 = {assets .. "hilda_bracelet_atk3.hilda_bracelet_atk3_C", "hilda_bracelet_atk3_astral"},
+    bracelets_4 = {assets .. "hilda_bracelet_atk4.hilda_bracelet_atk4_C", "hilda_bracelet_atk4_astral"},
     spear = {assets .. "hilda_spear.hilda_spear_C", "hilda_spear_astral"},
     hammer = {assets .. "hilda_cudgel_fire.hilda_cudgel_fire_C", "hilda_cudgel_astral"},
     sword_shield = {assets .. "hilda_sword_atk.hilda_sword_atk_C", "hilda_sword_attack_astral"},
@@ -241,9 +244,14 @@ for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     t.keys[4](); assert(not next(t.hooks))
 end
 
--- Survey-confirmed first melee sources: the same mob-hit route, distinct class/row pairs.
--- These are synthetic callbacks; a real-game integration test remains necessary.
-for _, kind in ipairs({"spear", "hammer", "sword_shield", "bracelets"}) do
+-- Live-confirmed first melee classes and statically mapped combo class/row pairs.
+-- All callbacks below are synthetic; combo integration must be tested in-game.
+for _, case in ipairs({
+    {"spear", "spear"}, {"hammer", "hammer"}, {"sword_shield", "sword_shield"},
+    {"bracelets", "bracelets"}, {"daggers_plus", "daggers"},
+    {"bracelets_3", "bracelets"}, {"bracelets_4", "bracelets"}
+}) do
+    local kind, expectedWeapon = case[1], case[2]
     local t = setup({skill = "hilda_staff_atk1"})
     t.keys[4]()
     for i = 1, 3 do shot(t, kind .. "Drain" .. i) end
@@ -251,7 +259,7 @@ for _, kind in ipairs({"spear", "hammer", "sword_shield", "bracelets"}) do
     local first = t.melee(kind .. "First", kind)
     contact(t, first, target)
     assert(t.count("MELEE") == 1 and t.has("MELEE before=0 reserve=1")
-        and t.has("weapon=" .. kind))
+        and t.has("weapon=" .. expectedWeapon))
     contact(t, first, target) -- Bracelet repeated callback: do not double-credit one source-target pair.
     assert(t.count("MELEE") == 1 and t.has("DUPLICATE reserve=1"))
     contact(t, t.melee(kind .. "WrongRow", kind, nil, "other_melee_row"), target)
