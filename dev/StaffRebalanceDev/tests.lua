@@ -166,8 +166,8 @@ local function setup(options)
         thunderBolt = function(name, owner, key)
             return source(name, thunderBolt, key or "hilda_staff_bolt_thunder", owner)
         end,
-        iceBolt = function(name, owner, key)
-            return source(name, iceBolt, key or "hilda_staff_bolt_ice", owner, 0.8)
+        iceBolt = function(name, owner, key, rate)
+            return source(name, iceBolt, key or "hilda_staff_bolt_ice", owner, rate or 0.8)
         end,
         iceSphere = function(name, parent, owner, key)
             local s = source(name, iceSphere, key or "hilda_staff_bolt_ice_hit", owner, 0.9)
@@ -769,6 +769,34 @@ do
         and s.count("ICE_PULSE") == 8 and s.count("ICE_BOLT") == 6)
     s.keys[7]()
     assert(not next(s.hooks) and s.has("hooks_remaining=0"))
+end
+-- A carrier with zero intrinsic DamageRate still consumes one charge
+-- and propagates strong/weak into real positive-rate damage pulses.
+do
+    local s = setup()
+    s.keys[3]()
+    local first
+    for i=1,3 do
+        s.beginStep("hilda_staff_atk1_ice")
+        local carrier = s.iceBolt("ZeroStrong" .. i, nil, nil, i == 1 and 0 or 0.8)
+        if i == 1 then first = carrier end
+        s.emit(iceBegin, parameter(carrier))
+        if i == 1 then
+            assert(carrier.rate == 0 and s.has("ICE_BOLT skill=hilda_staff_atk1_ice mode=strong"))
+        end
+        s.endStep()
+    end
+    s.beginStep("hilda_staff_atk1_ice")
+    local weak = s.iceBolt("ZeroWeak", nil, nil, 0)
+    s.emit(iceBegin, parameter(weak))
+    assert(weak.rate == 0 and s.has("ICE_BOLT skill=hilda_staff_atk1_ice mode=weak before=0 reserve=0 debit=0"))
+    s.endStep()
+    local strongPulse = s.iceSphere("ZeroStrongPulse", first)
+    local weakPulse = s.iceSphere("ZeroWeakPulse", weak)
+    s.emit(icePulseBegin, parameter(strongPulse))
+    s.emit(icePulseBegin, parameter(weakPulse))
+    assert(strongPulse.rate == 0.9 and weakPulse.rate == string.unpack("f", string.pack("f", 0.45)))
+    s.keys[7]()
 end
 do
     local s = setup()

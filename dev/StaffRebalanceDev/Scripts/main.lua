@@ -456,11 +456,13 @@ local function iceBegin(pawn, context)
     end
     assert(field(bolt, "DamageRate", 0x2C4))
     local rate = get(bolt, "DamageRate")
-    assert(rate > 0, "invalid_ice_rate")
+    -- The carrier can have no independent damage. Zero still establishes
+    -- an executed action and a mode for its damaging child pulses.
+    assert(rate >= 0, "invalid_ice_rate")
     local before = session.reserve
     local mode = before > 0 and "strong" or "weak"
     local effective = rate
-    if mode == "weak" then
+    if mode == "weak" and rate > 0 then
         effective = string.unpack("f", string.pack("f", rate * 0.5))
         assert(finite(effective) and effective > 0 and effective < rate, "invalid_weak_ice_rate")
         local ok, err = pcall(write, bolt, "DamageRate", effective)
