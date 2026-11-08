@@ -12,19 +12,28 @@ local fireSkills = {
     hilda_staff_atk3_fire = true,
 }
 local daggers = assets .. "hilda_dual_atk.hilda_dual_atk_C"
--- Exact Astral mob-hit sources: five live-tested first attacks, plus three
--- ordinary combo source pairs established by the cooked 2026-11-08 inventory.
--- New sources still require an in-game integration PASS; no prefix matching.
-local meleeSources = {
-    {kind = "daggers", class = daggers, row = "hilda_dual_attack_astral"},
-    {kind = "daggers", class = assets .. "hilda_dual_atk_plus.hilda_dual_atk_plus_C", row = "hilda_dual_atk_plus_astral"},
-    {kind = "spear", class = assets .. "hilda_spear.hilda_spear_C", row = "hilda_spear_astral"},
-    {kind = "hammer", class = assets .. "hilda_cudgel_fire.hilda_cudgel_fire_C", row = "hilda_cudgel_astral"},
-    {kind = "sword_shield", class = assets .. "hilda_sword_atk.hilda_sword_atk_C", row = "hilda_sword_attack_astral"},
-    {kind = "bracelets", class = assets .. "hilda_bracelet_atk1.hilda_bracelet_atk1_C", row = "hilda_bracelet_astral"},
-    {kind = "bracelets", class = assets .. "hilda_bracelet_atk3.hilda_bracelet_atk3_C", row = "hilda_bracelet_atk3_astral"},
-    {kind = "bracelets", class = assets .. "hilda_bracelet_atk4.hilda_bracelet_atk4_C", row = "hilda_bracelet_atk4_astral"},
+-- Cooked Remapping/Projectile_Player define these eight exact melee source
+-- families for astral, fire, ice and thunder. No class or row prefix matching.
+-- The hammer's elemental class is hilda_cudgel_fire_C even for astral/ice/thunder;
+-- the unmapped hilda_cudgel_C is deliberately not accepted.
+local meleeFamilies = {
+    {kind = "daggers", class = daggers, rowBase = "hilda_dual_attack"},
+    {kind = "daggers", class = assets .. "hilda_dual_atk_plus.hilda_dual_atk_plus_C", rowBase = "hilda_dual_atk_plus"},
+    {kind = "spear", class = assets .. "hilda_spear.hilda_spear_C", rowBase = "hilda_spear"},
+    {kind = "hammer", class = assets .. "hilda_cudgel_fire.hilda_cudgel_fire_C", rowBase = "hilda_cudgel"},
+    {kind = "sword_shield", class = assets .. "hilda_sword_atk.hilda_sword_atk_C", rowBase = "hilda_sword_attack"},
+    {kind = "bracelets", class = assets .. "hilda_bracelet_atk1.hilda_bracelet_atk1_C", rowBase = "hilda_bracelet"},
+    {kind = "bracelets", class = assets .. "hilda_bracelet_atk3.hilda_bracelet_atk3_C", rowBase = "hilda_bracelet_atk3"},
+    {kind = "bracelets", class = assets .. "hilda_bracelet_atk4.hilda_bracelet_atk4_C", rowBase = "hilda_bracelet_atk4"},
 }
+local meleeSources = {}
+for _, family in ipairs(meleeFamilies) do
+    for _, element in ipairs({"astral", "fire", "ice", "thunder"}) do
+        meleeSources[#meleeSources + 1] = {
+            kind = family.kind, class = family.class, row = family.rowBase .. "_" .. element
+        }
+    end
+end
 local root = "/Game/MainContent/Template/BaseBlueprint/"
 local mobHit = root .. "BaseAICharacter_Mob_BP.BaseAICharacter_Mob_BP_C:ProjectileHitEvent"
 local conduit = "/Game/MainContent/Act/Scene_BP/BaseScene_BP/BaseSavePoint_BP.BaseSavePoint_BP_C:"

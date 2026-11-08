@@ -9,6 +9,7 @@ local fireBegin = fireBolt .. ":ReceiveBeginPlay"
 local fireSphereBegin = fireSphere .. ":ReceiveBeginPlay"
 local daggers = assets .. "hilda_dual_atk.hilda_dual_atk_C"
 local otherMelee = {
+    daggers_base = {daggers, "hilda_dual_attack_astral"},
     daggers_plus = {assets .. "hilda_dual_atk_plus.hilda_dual_atk_plus_C", "hilda_dual_atk_plus_astral"},
     bracelets_3 = {assets .. "hilda_bracelet_atk3.hilda_bracelet_atk3_C", "hilda_bracelet_atk3_astral"},
     bracelets_4 = {assets .. "hilda_bracelet_atk4.hilda_bracelet_atk4_C", "hilda_bracelet_atk4_astral"},
@@ -280,6 +281,61 @@ for _, case in ipairs({
     t.keys[7]()
     assert(not next(t.hooks) and t.has("STOP reserve=3 hooks_remaining=0")
         and t.has("DIAG_SUMMARY total=4 capacity=50"))
+end
+
+-- Elemental expansion: independent expected cooked class/row fixtures for
+-- all eight melee families x Fire/Ice/Thunder; Astral remains covered above.
+-- The tested filter must match exact class AND row AND Hilda owner.
+for _, case in ipairs({
+    {"daggers_base", "daggers"}, {"daggers_plus", "daggers"},
+    {"spear", "spear"}, {"hammer", "hammer"}, {"sword_shield", "sword_shield"},
+    {"bracelets", "bracelets"}, {"bracelets_3", "bracelets"},
+    {"bracelets_4", "bracelets"}
+}) do
+    local kind, expectedWeapon = case[1], case[2]
+    local class, astralRow = table.unpack(assert(otherMelee[kind]))
+    for _, element in ipairs({"fire", "ice", "thunder"}) do
+        local row = astralRow:gsub("_astral$", "_" .. element)
+        assert(row ~= astralRow and row:sub(-#element) == element)
+        local t = setup({skill = "hilda_staff_atk1"})
+        t.keys[3]()
+        for i = 1, 3 do shot(t, kind .. element .. "Drain" .. i) end
+        assert(t.has("mode=strong before=1 reserve=0"))
+        local first = t.melee(kind .. element .. "First", kind, nil, row)
+        contact(t, first, target)
+        assert(t.count("MELEE") == 1 and t.has("MELEE before=0 reserve=1")
+            and t.has("weapon=" .. expectedWeapon) and t.has("diag_total=1 diag_weapon=1"))
+        contact(t, first, target)
+        assert(t.count("MELEE") == 1 and t.has("DUPLICATE reserve=1")
+            and t.has("diag_total=1"))
+        contact(t, t.melee(kind .. element .. "WrongRow", kind, nil, astralRow .. "_wrong"), target)
+        contact(t, t.melee(kind .. element .. "Foreign", kind, object("ForeignOwner", 98), row), target)
+        -- An accurate row on an unrelated melee class must not match.
+        local mismatched = kind == "spear" and "hammer" or "spear"
+        contact(t, t.melee(kind .. element .. "WrongClass", mismatched, nil, row), target)
+        -- Unmapped hammer class is distinct from every elemental hammer class.
+        if kind == "hammer" then
+            local unmapped = t.melee(kind .. element .. "Unmapped", kind, nil, row)
+            unmapped.GetClass = function()
+                return {GetFullName = function()
+                    return "BlueprintGeneratedClass " .. assets .. "hilda_cudgel.hilda_cudgel_C"
+                end}
+            end
+            contact(t, unmapped, target)
+        end
+        assert(t.count("MELEE") == 1)
+        contact(t, first, other)
+        assert(t.count("MELEE") == 2 and t.has("MELEE before=1 reserve=2"))
+        contact(t, t.melee(kind .. element .. "Next", kind, nil, row), target)
+        contact(t, t.melee(kind .. element .. "Cap", kind, nil, row), target)
+        assert(t.count("MELEE") == 4 and t.has("MELEE before=3 reserve=3")
+            and t.has("diag_total=4 diag_weapon=4"))
+        contact(t, t.bolt(kind .. element .. "StaffNegative"), target)
+        assert(t.count("MELEE") == 4)
+        t.keys[7]()
+        assert(not next(t.hooks) and t.has("DIAG_SUMMARY total=4 capacity=50")
+            and t.has("STOP reserve=3 hooks_remaining=0"))
+    end
 end
 
 -- Saturation is a gameplay cap only. The independent diagnostic counter
