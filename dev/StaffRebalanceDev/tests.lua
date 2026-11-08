@@ -261,7 +261,7 @@ for _, case in ipairs({
     local first = t.melee(kind .. "First", kind)
     contact(t, first, target)
     assert(t.count("MELEE") == 1 and t.has("MELEE before=0 reserve=1")
-        and t.has("weapon=" .. expectedWeapon)
+        and t.has("weapon=" .. expectedWeapon .. " element=astral")
         and t.has("diag_total=1 diag_weapon=1"))
     contact(t, first, target) -- Bracelet repeated callback: do not double-credit one source-target pair.
     assert(t.count("MELEE") == 1 and t.has("DUPLICATE reserve=1")
@@ -304,7 +304,8 @@ for _, case in ipairs({
         local first = t.melee(kind .. element .. "First", kind, nil, row)
         contact(t, first, target)
         assert(t.count("MELEE") == 1 and t.has("MELEE before=0 reserve=1")
-            and t.has("weapon=" .. expectedWeapon) and t.has("diag_total=1 diag_weapon=1"))
+            and t.has("weapon=" .. expectedWeapon .. " element=" .. element)
+            and t.has("diag_total=1 diag_weapon=1"))
         contact(t, first, target)
         assert(t.count("MELEE") == 1 and t.has("DUPLICATE reserve=1")
             and t.has("diag_total=1"))

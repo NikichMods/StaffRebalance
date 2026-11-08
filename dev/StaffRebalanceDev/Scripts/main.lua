@@ -30,7 +30,7 @@ local meleeSources = {}
 for _, family in ipairs(meleeFamilies) do
     for _, element in ipairs({"astral", "fire", "ice", "thunder"}) do
         meleeSources[#meleeSources + 1] = {
-            kind = family.kind, class = family.class, row = family.rowBase .. "_" .. element
+            kind = family.kind, element = element, class = family.class, row = family.rowBase .. "_" .. element
         }
     end
 end
@@ -353,7 +353,7 @@ local function meleeKind(source)
     local row = source.ProjectileDataName:ToString()
     for _, spec in ipairs(meleeSources) do
         if class == "BlueprintGeneratedClass " .. spec.class and row == spec.row then
-            return spec.kind
+            return spec.kind, spec.element
         end
     end
     return nil
@@ -383,7 +383,7 @@ local function hit(pawn, context, sourceParam, _component, _position, damagePara
         end
         return
     end
-    local kind = meleeKind(source)
+    local kind, element = meleeKind(source)
     if not kind or not owned(source, pawn) then return end
     -- The hooked BaseAICharacter_Mob_BP_C receiver is a combat character, not scenery.
     -- The accepted contact contract does not require an additional faction filter.
@@ -398,7 +398,7 @@ local function hit(pawn, context, sourceParam, _component, _position, damagePara
     end
     if seen[targetId] then
         log("DUPLICATE", "reserve=" .. session.reserve .. " source=" .. sourceId .. " target=" .. targetId
-            .. " diag_total=" .. session.diagnostic.total)
+            .. " weapon=" .. kind .. " element=" .. element .. " diag_total=" .. session.diagnostic.total)
         return
     end
     seen[targetId] = true
@@ -409,7 +409,8 @@ local function hit(pawn, context, sourceParam, _component, _position, damagePara
     session.reserve = math.min(capacity, before + 1)
     log("MELEE", "before=" .. before .. " reserve=" .. session.reserve .. " notified_damage=" .. damage
         .. " source=" .. sourceId .. " target=" .. targetId .. " weapon=" .. kind
-        .. " diag_total=" .. diagnostic.total .. " diag_weapon=" .. diagnostic.byWeapon[kind])
+        .. " element=" .. element .. " diag_total=" .. diagnostic.total
+        .. " diag_weapon=" .. diagnostic.byWeapon[kind])
 end
 
 local function requestRest(_, context)
