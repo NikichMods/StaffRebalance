@@ -136,6 +136,33 @@ local function write(object, name, value)
     object:SetPropertyValue(name, value)
     assert(get(object, name) == value, "readback_mismatch:" .. name)
 end
+-- Single authoritative reserve transition. No HUD mirror or event bus:
+-- future presentation can observe changes here and read session.reserve on attach.
+-- A capped melee contact, weak shot at zero, or rest while full is a no-op.
+local function setReserve(nextValue)
+    assert(session and math.type(session.reserve) == "integer"
+        and math.type(nextValue) == "integer"
+        and nextValue >= 0 and nextValue <= capacity, "invalid_reserve_transition")
+    local before = session.reserve
+    if before == nextValue then return before, nextValue, false end
+    session.reserve = nextValue
+    return before, nextValue, true
+end
+
+-- Shared float32 weak-damage write. Element-specific source/rate/owner guards
+-- remain in their existing callbacks; Ice zero-rate carriers bypass this.
+local function weakenDamageRate(source, rate, invalidReason, sourceId)
+    local effective = string.unpack("f", string.pack("f", rate * 0.5))
+    assert(finite(effective) and effective > 0 and effective < rate, invalidReason)
+    local ok, err = pcall(write, source, "DamageRate", effective)
+    if not ok then
+        local restored = pcall(write, source, "DamageRate", rate)
+        log(restored and "ROLLBACK_OK" or "ROLLBACK_FAILED", "source=" .. sourceId)
+        error(err)
+    end
+    return effective
+end
+
 local function player()
     local cdo = StaticFindObject(GLOBAL)
     if not valid(cdo) or cdo:GetFullName() ~= "GameGlobal " .. GLOBAL then
@@ -274,17 +301,10 @@ local function astralBegin(pawn, context)
     local mode = (combo and combo.mode) or (before > 0 and "strong" or "weak")
     local effective = rate
     if mode == "weak" then
-        effective = string.unpack("f", string.pack("f", rate * 0.5))
-        assert(finite(effective) and effective > 0 and effective < rate, "invalid_weak_rate")
-        local ok, err = pcall(write, bolt, "DamageRate", effective)
-        if not ok then
-            local restored = pcall(write, bolt, "DamageRate", rate)
-            log(restored and "ROLLBACK_OK" or "ROLLBACK_FAILED", "source=" .. sourceId)
-            error(err)
-        end
+        effective = weakenDamageRate(bolt, rate, "invalid_weak_rate", sourceId)
     end
     local debit = (first and mode == "strong") and 1 or 0
-    if debit == 1 then session.reserve = before - 1 end
+    if debit == 1 then setReserve(before - 1) end
     if combo and first then combo.mode = mode end
     session.shots[sourceId] = mode
     log("SHOT", "skill=" .. skill .. " mode=" .. mode
@@ -337,17 +357,10 @@ local function thunderBegin(pawn, context)
     local mode = combo.mode or (before > 0 and "strong" or "weak")
     local effective = rate
     if mode == "weak" then
-        effective = string.unpack("f", string.pack("f", rate * 0.5))
-        assert(finite(effective) and effective > 0 and effective < rate, "invalid_weak_thunder_rate")
-        local ok, err = pcall(write, bolt, "DamageRate", effective)
-        if not ok then
-            local restored = pcall(write, bolt, "DamageRate", rate)
-            log(restored and "ROLLBACK_OK" or "ROLLBACK_FAILED", "source=" .. sourceId)
-            error(err)
-        end
+        effective = weakenDamageRate(bolt, rate, "invalid_weak_thunder_rate", sourceId)
     end
     local debit = first and mode == "strong" and 1 or 0
-    if debit == 1 then session.reserve = before - 1 end
+    if debit == 1 then setReserve(before - 1) end
     if first then combo.mode = mode end
     session.shots[sourceId] = "thunder_" .. mode
     log("THUNDER_BOLT", "skill=" .. skill .. " mode=" .. mode .. " before=" .. before
@@ -481,7 +494,7 @@ local function fireBegin(pawn, context)
     -- needs the ORIGINAL bolt's mode. Reuse the existing per-source shot ledger.
     session.shots[sourceId] = "fire_" .. mode
     combo.mode, combo.fireSource = mode, sourceId
-    if mode == "strong" then session.reserve = before - 1 end
+    if mode == "strong" then setReserve(before - 1) end
     log("FIRE_BOLT", "skill=" .. skill .. " mode=" .. mode .. " before=" .. before
         .. " reserve=" .. session.reserve .. " debit=" .. (mode == "strong" and 1 or 0)
         .. " source=" .. sourceId)
@@ -515,14 +528,7 @@ local function fireExplosion(pawn, context)
     assert(rate > 0, "invalid_fire_explosion_rate")
     local effective = rate
     if mode == "weak" then
-        effective = string.unpack("f", string.pack("f", rate * 0.5))
-        assert(finite(effective) and effective > 0 and effective < rate, "invalid_weak_fire_rate")
-        local ok, err = pcall(write, sphere, "DamageRate", effective)
-        if not ok then
-            local restored = pcall(write, sphere, "DamageRate", rate)
-            log(restored and "ROLLBACK_OK" or "ROLLBACK_FAILED", "source=" .. sourceId)
-            error(err)
-        end
+        effective = weakenDamageRate(sphere, rate, "invalid_weak_fire_rate", sourceId)
     end
     -- The observed basic Fire path produces one sphere per bolt.
     session.fireParents[parentId] = nil
@@ -657,18 +663,11 @@ local function iceBegin(pawn, context)
     local mode = before > 0 and "strong" or "weak"
     local effective = rate
     if mode == "weak" and rate > 0 then
-        effective = string.unpack("f", string.pack("f", rate * 0.5))
-        assert(finite(effective) and effective > 0 and effective < rate, "invalid_weak_ice_rate")
-        local ok, err = pcall(write, bolt, "DamageRate", effective)
-        if not ok then
-            local restored = pcall(write, bolt, "DamageRate", rate)
-            log(restored and "ROLLBACK_OK" or "ROLLBACK_FAILED", "source=" .. sourceId)
-            error(err)
-        end
+        effective = weakenDamageRate(bolt, rate, "invalid_weak_ice_rate", sourceId)
     end
     session.iceParents[sourceId] = mode
     combo.mode, combo.iceSource = mode, sourceId
-    if mode == "strong" then session.reserve = before - 1 end
+    if mode == "strong" then setReserve(before - 1) end
     session.shots[sourceId] = "ice_" .. mode
     log("ICE_BOLT", "skill=" .. skill .. " mode=" .. mode .. " before=" .. before
         .. " reserve=" .. session.reserve .. " debit=" .. (mode == "strong" and 1 or 0)
@@ -702,14 +701,7 @@ local function icePulse(pawn, context)
     assert(rate > 0, "invalid_ice_pulse_rate")
     local effective = rate
     if mode == "weak" then
-        effective = string.unpack("f", string.pack("f", rate * 0.5))
-        assert(finite(effective) and effective > 0 and effective < rate, "invalid_weak_ice_pulse_rate")
-        local ok, err = pcall(write, sphere, "DamageRate", effective)
-        if not ok then
-            local restored = pcall(write, sphere, "DamageRate", rate)
-            log(restored and "ROLLBACK_OK" or "ROLLBACK_FAILED", "source=" .. sourceId)
-            error(err)
-        end
+        effective = weakenDamageRate(sphere, rate, "invalid_weak_ice_pulse_rate", sourceId)
     end
     -- Do NOT remove iceParents[parentId]: another pulse may arrive later.
     session.shots[sourceId] = "ice_" .. mode
@@ -798,7 +790,7 @@ local function hit(pawn, context, sourceParam, _component, _position, damagePara
     diagnostic.total = math.min(diagnosticCapacity, diagnostic.total + 1)
     diagnostic.byWeapon[kind] = math.min(diagnosticCapacity, (diagnostic.byWeapon[kind] or 0) + 1)
     local before = session.reserve
-    session.reserve = math.min(capacity, before + 1)
+    setReserve(math.min(capacity, before + 1))
     log("MELEE", "before=" .. before .. " reserve=" .. session.reserve .. " notified_damage=" .. damage
         .. " source=" .. sourceId .. " target=" .. targetId .. " weapon=" .. kind
         .. " element=" .. element .. " diag_total=" .. diagnostic.total
@@ -833,7 +825,7 @@ local function confirmRest(_, _context, worldContext)
         return
     end
     local before = session.reserve
-    session.reserve = capacity
+    setReserve(capacity)
     log("REST", "before=" .. before .. " reserve=" .. session.reserve .. " conduit=" .. pending.conduit)
 end
 
