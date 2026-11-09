@@ -8,6 +8,9 @@ local staffVfx = "/Game/MainContent/Assets/fx/bp/skill/hilda/_staff/"
 local fireSphere = "/Game/MainContent/Act/Skill_BP/CommonSkill_BP/sphere_200.sphere_200_C"
 local fireBegin = fireBolt .. ":ReceiveBeginPlay"
 local fireSphereBegin = fireSphere .. ":ReceiveBeginPlay"
+local fireBlast = "/Game/MainContent/Assets/fx/bp/general/fire/fire_explosion_b_02_bp.fire_explosion_b_02_bp_C"
+local fireBlastBegin = fireBlast .. ":ReceiveBeginPlay"
+local fireBlastTemplate = "ParticleSystem /Game/MainContent/Assets/fx/bp/general/fire/fire_explosion_b_02.fire_explosion_b_02"
 local thunderBolt = assets .. "hilda_staff_bolt_thunder.hilda_staff_bolt_thunder_C"
 local thunderBegin = thunderBolt .. ":ReceiveBeginPlay"
 local iceBolt = assets .. "hilda_staff_bolt_ice.hilda_staff_bolt_ice_C"
@@ -106,6 +109,7 @@ local function setup(options)
     if not options.missingFire then
         reflected(fireBegin, 0)
         reflected(fireSphereBegin, 0)
+        if options.blastReady then reflected(fireBlastBegin, 0) end
     end
     reflected(nativeBegin, 0x400)
     reflected(nativeEnd, 0x400)
@@ -203,6 +207,34 @@ local function setup(options)
         return particle
     end
 
+
+    local function fireBlastFixture(parent, name, config)
+        config = config or {}
+        local blast = object(name, 52, nil, config.classPath or fireBlast)
+        blast.GetOwner = function() return config.owner or parent end
+        blast.Scene = object("BlastScene", 53)
+        local psc = object("BlastParticle", 54)
+        psc.GetClass = function()
+            return {GetFullName = function() return "Class /Script/Engine.ParticleSystemComponent" end}
+        end
+        blast.ParticleSystem = psc
+        psc.GetOwner = function() return blast end
+        psc.GetAttachParent = function() return blast.Scene end
+        psc.Template = object("BlastTemplate", 55, nil, nil, fireBlastTemplate)
+        psc.IsActive = function() return true end
+        psc.GetCollisionEnabled = function() return 0 end
+        psc.AttachChildren = {GetArrayNum = function() return 0 end}
+        psc.bAllowRecycling = false
+        psc.RelativeScale3D = {X = 1, Y = 1, Z = 1}
+        psc.scaleWrites = 0
+        psc.SetRelativeScale3D = function(self, scale)
+            self.scaleWrites = self.scaleWrites + 1
+            self.RelativeScale3D = scale
+            if options.blastWriteError and scale.X < 1 then error("blast write failed") end
+        end
+        return blast, psc
+    end
+
     assert(loadfile(path, "t", e))()
     return {
         keys = keys,
@@ -225,6 +257,7 @@ local function setup(options)
             return source(name, fireBolt, key or "hilda_staff_bolt_fire", owner)
         end,
         fireFlight = fireFlight,
+        fireBlast = fireBlastFixture,
         thunderBolt = function(name, owner, key)
             return source(name, thunderBolt, key or "hilda_staff_bolt_thunder", owner)
         end,
@@ -559,6 +592,85 @@ do
     t.endStep()
     t.keys[7]()
 end
+
+-- Fire blast VFX: exact parent provenance survives sphere consumption and
+-- a newer weak action. Readiness/guard failures never change Fire damage.
+do
+    local s = setup({blastReady = true})
+    s.keys[3]()
+    assert(s.hooks[fireBlastBegin] and s.has("START reserve=3 hooks=15"))
+    local strong = {}
+    for i = 1, 3 do
+        s.beginStep("hilda_staff_atk" .. i .. "_fire")
+        strong[i] = s.fireBolt("BlastStrong" .. i)
+        s.emit(fireBegin, parameter(strong[i]))
+        s.endStep()
+    end
+    local thirdSphere = s.fireSphere("StrongThirdSphere", strong[3])
+    s.emit(fireSphereBegin, parameter(thirdSphere))
+    assert(thirdSphere.rate == 0.9)
+    s.beginStep("hilda_staff_atk2_fire")
+    local weak = s.fireBolt("BlastWeak")
+    local weakFlight = s.fireFlight(weak)
+    s.emit(fireBegin, parameter(weak))
+    s.endStep()
+    assert(weakFlight.scaleWrites == 1)
+    local oldBlast, oldPSC = s.fireBlast(strong[3], "DelayedStrongBlast")
+    s.emit(fireBlastBegin, parameter(oldBlast))
+    assert(oldPSC.scaleWrites == 0 and s.has("FIRE_BLAST mode=strong visual=vanilla"))
+    local weakSphere = s.fireSphere("WeakBlastSphere", weak)
+    s.emit(fireSphereBegin, parameter(weakSphere))
+    assert(weakSphere.rate == string.unpack("f", string.pack("f", 0.45)))
+    local newBlast, newPSC = s.fireBlast(weak, "DelayedWeakBlast")
+    s.emit(fireBlastBegin, parameter(newBlast))
+    s.emit(fireBlastBegin, parameter(newBlast))
+    local expected = string.unpack("f", string.pack("f", 0.35))
+    assert(newPSC.scaleWrites == 1 and newPSC.RelativeScale3D.X == expected)
+    assert(s.count("FIRE_BLAST_VFX_APPLIED") == 1 and s.has("duplicate_blast"))
+    local unknown, unknownPsc = s.fireBlast(s.fireBolt("UntrackedBlastParent"), "UntrackedBlast")
+    s.emit(fireBlastBegin, parameter(unknown))
+    assert(unknownPsc.scaleWrites == 0 and s.has("reason=untracked_bolt"))
+    local alienParent = s.fireBolt("AlienParent", object("NonHilda", 99))
+    local alien, alienPsc = s.fireBlast(alienParent, "AlienBlast")
+    s.emit(fireBlastBegin, parameter(alien))
+    assert(alienPsc.scaleWrites == 0 and s.has("reason=foreign_or_unverified_owner"))
+    s.keys[7]()
+    assert(not next(s.hooks) and s.has("hooks_remaining=0"))
+end
+do
+    local s = setup({blastReady = true, blastWriteError = true})
+    s.keys[3]()
+    for i = 1, 3 do
+        s.beginStep("hilda_staff_atk1_fire")
+        s.emit(fireBegin, parameter(s.fireBolt("BlankStrong" .. i)))
+        s.endStep()
+    end
+    s.beginStep("hilda_staff_atk2_fire")
+    local weak = s.fireBolt("BlastRollbackWeak")
+    s.fireFlight(weak)
+    s.emit(fireBegin, parameter(weak))
+    s.endStep()
+    local sphere = s.fireSphere("BlastRollbackSphere", weak)
+    s.emit(fireSphereBegin, parameter(sphere))
+    local blast, particle = s.fireBlast(weak, "BlastRollback")
+    s.emit(fireBlastBegin, parameter(blast))
+    assert(particle.RelativeScale3D.X == 1 and particle.scaleWrites == 2)
+    assert(s.count("FIRE_BLAST_VFX_SKIP") == 1 and s.has("rollback=ok"))
+    local second, secondParticle = s.fireBlast(weak, "BlastCosmeticsDisabled")
+    s.emit(fireBlastBegin, parameter(second))
+    assert(secondParticle.scaleWrites == 0)
+    assert(sphere.rate == string.unpack("f", string.pack("f", 0.45)))
+    s.keys[7]()
+    assert(not next(s.hooks))
+end
+do
+    local s = setup({blastReady = false})
+    s.keys[3]()
+    assert(not s.hooks[fireBlastBegin] and s.has("FIRE_BLAST_UNAVAILABLE"))
+    assert(s.has("START reserve=3 hooks=14 fire=ready"))
+    s.keys[7]()
+end
+
 -- Fire changes stay isolated in these dev-only tests. Real UE4SS integration is a separate gate.
 do
     local function fire(t, name, configure)

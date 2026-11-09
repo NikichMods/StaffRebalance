@@ -7,6 +7,9 @@ local fireBolt = assets .. "hilda_staff_bolt_fire.hilda_staff_bolt_fire_C"
 local staffVfx = "/Game/MainContent/Assets/fx/bp/skill/hilda/_staff/"
 local fireVfx = staffVfx .. "hilda_staff_fire_bp.hilda_staff_fire_bp_C"
 local fireParticle = "ParticleSystem " .. staffVfx .. "private/fire_missile.fire_missile"
+local fireBlast = "/Game/MainContent/Assets/fx/bp/general/fire/fire_explosion_b_02_bp.fire_explosion_b_02_bp_C"
+local fireBlastParticle = "ParticleSystem /Game/MainContent/Assets/fx/bp/general/fire/fire_explosion_b_02.fire_explosion_b_02"
+local weakFireBlastScale = string.unpack("f", string.pack("f", 0.35)) -- visual A/B only
 -- Match UE4.27 float storage exactly for the readback assertions.
 local weakFireScale = string.unpack("f", string.pack("f", 0.35))
 local weakFireFade = string.unpack("f", string.pack("f", 0.15))
@@ -474,6 +477,9 @@ local function fireBegin(pawn, context)
     local before = session.reserve
     local mode = before > 0 and "strong" or "weak"
     session.fireParents[sourceId] = mode
+    -- The damage sphere consumes fireParents; the later exact visual blast still
+    -- needs the ORIGINAL bolt's mode. Reuse the existing per-source shot ledger.
+    session.shots[sourceId] = "fire_" .. mode
     combo.mode, combo.fireSource = mode, sourceId
     if mode == "strong" then session.reserve = before - 1 end
     log("FIRE_BOLT", "skill=" .. skill .. " mode=" .. mode .. " before=" .. before
@@ -523,6 +529,94 @@ local function fireExplosion(pawn, context)
     session.shots[sourceId] = "fire_" .. mode
     log("FIRE_SPHERE", "mode=" .. mode .. " source=" .. sourceId .. " parent=" .. parentId
         .. " rate=" .. rate .. " effective=" .. effective)
+end
+
+
+-- Fire's native timeline creates the damage sphere BEFORE the separately owned
+-- visual blast. Live provenance: blast Owner==the exact Fire bolt in 5/5 shots,
+-- even when the last strong blast arrives after a newer weak Fire bolt.
+-- Read the original shot ledger, NEVER the current reserve or skill state.
+local function fireBlastBegin(pawn, context)
+    local blast = context:get()
+    assert(exact(blast, fireBlast), "unexpected_fire_blast_context")
+    local owner = blast:GetOwner()
+    if not exact(owner, fireBolt) or owner.ProjectileDataName:ToString() ~= "hilda_staff_bolt_fire"
+        or not owned(owner, pawn) then
+        log("FIRE_BLAST_SKIP", "reason=foreign_or_unverified_owner")
+        return
+    end
+    local blastId, boltId = id(blast), id(owner)
+    if session.shots[blastId] then
+        log("FIRE_BLAST_SKIP", "reason=duplicate_blast source=" .. blastId)
+        return
+    end
+    local mode = session.shots[boltId]
+    if mode ~= "fire_strong" and mode ~= "fire_weak" then
+        log("FIRE_BLAST_SKIP", "reason=untracked_bolt source=" .. blastId .. " parent=" .. boltId)
+        return
+    end
+    session.shots[blastId] = "fire_blast_" .. mode
+    -- In strong mode, preserve EVERY vanilla visual component without probing.
+    if mode == "fire_strong" then
+        log("FIRE_BLAST", "mode=strong visual=vanilla source=" .. blastId .. " parent=" .. boltId)
+        return
+    end
+    if session.fireBlastVfxError then return end
+    local ok, reason = pcall(function()
+        local function requireFunction(path, shape)
+            local ready, problem = check("/Script/Engine." .. path, true, false, shape)
+            assert(ready, problem)
+        end
+        requireFunction("ActorComponent:GetOwner", "ObjectProperty:ReturnValue")
+        requireFunction("SceneComponent:GetAttachParent", "ObjectProperty:ReturnValue")
+        requireFunction("ActorComponent:IsActive", "BoolProperty:ReturnValue")
+        requireFunction("PrimitiveComponent:GetCollisionEnabled", "ByteProperty:ReturnValue")
+        requireFunction("SceneComponent:SetRelativeScale3D", "StructProperty:NewScale3D")
+        local particle = blast.ParticleSystem
+        assert(valid(particle) and particle:GetClass():GetFullName() ==
+            "Class /Script/Engine.ParticleSystemComponent", "fire_blast_particle_class")
+        assert(valid(particle:GetOwner()) and id(particle:GetOwner()) == blastId
+            and valid(blast.Scene) and valid(particle:GetAttachParent())
+            and id(particle:GetAttachParent()) == id(blast.Scene), "fire_blast_particle_owner")
+        local template = particle.Template
+        assert(valid(template) and template:GetFullName() == fireBlastParticle, "fire_blast_template")
+        assert(particle:IsActive() and particle:GetCollisionEnabled() == 0
+            and particle.AttachChildren:GetArrayNum() == 0 and particle.bAllowRecycling == false,
+            "fire_blast_not_visual_leaf")
+        local scale = particle.RelativeScale3D
+        assert(finite(scale.X) and finite(scale.Y) and finite(scale.Z)
+            and scale.X > 0 and scale.Y > 0 and scale.Z > 0
+            and scale.X <= 10 and scale.Y <= 10 and scale.Z <= 10, "fire_blast_invalid_scale")
+        local before = {X = scale.X, Y = scale.Y, Z = scale.Z}
+        local after = {
+            X = string.unpack("f", string.pack("f", scale.X * weakFireBlastScale)),
+            Y = string.unpack("f", string.pack("f", scale.Y * weakFireBlastScale)),
+            Z = string.unpack("f", string.pack("f", scale.Z * weakFireBlastScale)),
+        }
+        assert(after.X > 0 and after.Y > 0 and after.Z > 0, "fire_blast_zero_scale")
+        log("FIRE_BLAST_VFX_WRITE", "source=" .. blastId .. " parent=" .. boltId)
+        local written, problem = pcall(function()
+            particle:SetRelativeScale3D(after)
+            local actual = particle.RelativeScale3D
+            assert(actual.X == after.X and actual.Y == after.Y and actual.Z == after.Z,
+                "fire_blast_scale_readback")
+        end)
+        if not written then
+            local restored = pcall(function()
+                particle:SetRelativeScale3D(before)
+                local actual = particle.RelativeScale3D
+                assert(actual.X == before.X and actual.Y == before.Y and actual.Z == before.Z)
+            end)
+            error("write:" .. tostring(problem) .. " rollback=" .. (restored and "ok" or "failed"), 0)
+        end
+    end)
+    if ok then
+        log("FIRE_BLAST_VFX_APPLIED", "mode=weak probe=scale source=" .. blastId .. " parent=" .. boltId)
+    else
+        session.fireBlastVfxError = true
+        log("FIRE_BLAST_VFX_SKIP", "reason=" .. tostring(reason):sub(-220)
+            .. " action=disable_blast_vfx_for_session")
+    end
 end
 
 -- Ice creates a carrier bolt and repeated child damage pulses. Capture one
@@ -798,6 +892,13 @@ local function start()
     if fireReady then
         routes[#routes + 1] = {fireBolt .. ":ReceiveBeginPlay", "", fireBegin}
         routes[#routes + 1] = {fireSphere .. ":ReceiveBeginPlay", "", fireExplosion}
+        -- Optional cosmetic hook: never prevent validated Fire damage hooks.
+        local blastReady, blastReason = check(fireBlast .. ":ReceiveBeginPlay", false, false, "")
+        if blastReady then
+            routes[#routes + 1] = {fireBlast .. ":ReceiveBeginPlay", "", fireBlastBegin}
+        else
+            log("FIRE_BLAST_UNAVAILABLE", "reason=" .. blastReason .. " warmup_blast_before_F3=true")
+        end
     end
     -- Thunder class may remain unloaded in this save; keep existing elements operational.
     local thunderReady, thunderReason = check(thunderBolt .. ":ReceiveBeginPlay", false, false, "")
