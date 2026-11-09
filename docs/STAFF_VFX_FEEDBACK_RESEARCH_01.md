@@ -100,8 +100,64 @@ These are **damage/projectile Actors**, not evidence that any one of them is the
 
 **Stop rule:** after reaching a complete, referenced component/asset inventory for one accessible Astral/Fire flight effect and, if available, its matched impact effect, **stop**. If the exports do not include the renderer owner, record the exact missing dependency and recommend a single strictly bounded read-only in-game component observation *only then*. No general ProcessEvent hook and no global shader injector investigation.
 
-### Current gate after this public-read audit
+### Historical gate after the public-read audit
 
 - **Confirmed:** source classes/rows, Astral and Fire per-shot strong/weak mode attribution, Fire parent of delayed explosion, precise existing export identities, generic UE4.27 parameterization capabilities and constraints.
 - **Not confirmed:** exact game VFX component, particle/material asset, tunable parameter, isolation from gameplay/collision, safe timing and actual visual effect.
 - **Implementation verdict:** **VFX cosmetic modification BLOCKED pending local static component inventory**; current staff damage and HUD research can continue unchanged. This is one finite static-data task, not a request to reopen previously accepted combat mechanisms.
+
+## Результат локального Bounded component audit — 2026-11-09
+
+**Статически подтверждён путь к узкому weak-only тесту полёта Fire.** Для полной связки полёт + попадание + взрыв статус **BLOCKED** до проверки runtime-привязки и видимого результата. Анализ выполнен на `96b216e45108466b4155a955d6af04d767008e4d`. Пять исходных Blueprint, Astral ubergraph, `Projectile_Player.json`, `TimelineData_Projectile.json` и `BaseProjectile.h` совпали по SHA-256 с [EVIDENCE.json](../research/static-combat-01/EVIDENCE.json). Сохранённый Fire ubergraph в манифесте отсутствует. Его локальный SHA-256 — `944226a11bc3a47873d08683b600add899ca770a13b9ce702089ce909e26885a`. Недостающие точные зависимости извлечены прежним CUE4Parse 1.2.2 из штатных контейнеров в игнорируемый каталог. Ниже имена шаблонов SCS и смещения инструкций в соответствующих `ExecuteUbergraph_*`.
+
+### Владение и границы трансформации
+
+- `BaseProjectile_BP_C:DefaultSceneRoot` → `RootArrow` из `BaseBoxProjectile_BP_C` или `BaseSphereProjectile_BP_C`. Под `RootArrow` отдельными ветвями находятся коллизия и визуальный `ChildActorComponent`. Astral переопределяет `ProjectileBox` (extent 50/30/30), добавляет `ProjectileHitTrace` под `RootArrow`. Fire переопределяет `ProjectileSphere` (radius 20). У обоих там же отдельный `GrassCollision`, а `FMODAudio` висит на `DefaultSceneRoot`. Native `BaseProjectile` и его поля движения принадлежат снаряду. Ubergraph вызывает `SetMoveSpeed` на нём (Astral 20/611, Fire 136) и выключает коллизию отдельно (Astral 130, Fire 336). Масштаб actor/root/arrow затронет несколько ветвей.
+- Точные шаблоны креплений: `/Game/MainContent/Act/Skill_BP/PlayerSkill_BP/hilda_staff_bolt_astral.hilda_staff_bolt_astral_C:hilda_staff_astral_bp_GEN_VARIABLE` и `/Game/MainContent/Act/Skill_BP/PlayerSkill_BP/hilda_staff_bolt_fire.hilda_staff_bolt_fire_C:hilda_staff_fire_bp_GEN_VARIABLE`. Это `ChildActorComponent` с `RelativeScale3D` 0.5 и 0.6 по всем осям. Их классы лежат в `/Game/MainContent/Assets/fx/bp/skill/hilda/_staff/` и наследуют native `BaseVFXObject`. Fire имеет `Scene → ParticleSystem`, где PSC — лист. Astral имеет `Scene → PS_main → tracker → PS_trail` и отдельный лист `PointLight` под `Scene`. `tracker` — невидимый `sphere_normal` с `NoCollision`, отключёнными overlap и навигацией. Его роль в геометрии шлейфа важна, даже если сам mesh скрыт.
+- Fire ubergraph на 284 запускает `PlaySkillTimeline`. Все три обычные строки `staff_atk{1,2,3}_fire_hit` на кадре 0 содержат два события. `fire object` использует `hilda_staff_bolt_fire_explosion` → `Projectile_Player` → `sphere_200_C`. Его SCS содержит damage sphere (radius 200) и вложенный hit trace (half-height 250). `attach vfx` использует `hilda_staff_bolt_fire_explo` → `VFX_Player` → `fire_explosion_b_02_bp_C`. Точный runtime attach parent, момент выдачи экземпляра и корреляция с режимом исходного болта для **VFX** остаются неизвестными. Live-атрибуция `sphere_200_C` этого не доказывает.
+- Astral ubergraph 46 и Fire 20 вызывают `Play3DSound` с `hilda_staff_astral_hit` и `hilda_staff_fire_hit`. Это FMOD. Отдельный путь попадания в цель: `Projectile_Player.m_hitRespond` у Astral-болта = `hilda_astral`, у Fire-болта = `None`, у Fire damage sphere = `hilda_fire`. `HitRespond` сопоставляет им одноимённые hit/block ключи, `VFX_Player` разрешает эти ключи в два hit Blueprint. Это статическая цепочка данных. Native dispatch и владелец созданного target hit VFX в рантайме здесь не наблюдались.
+
+### Матрица компонентов
+
+Пути к Cascade-пакетам полёта и старта относятся к `/Game/MainContent/Assets/fx/bp/skill/hilda/_staff/private/`, пакеты попадания и взрыва — к `/Game/MainContent/Assets/fx/bp/general/{astral,fire}/`. Имена в первом столбце после двоеточия — точные SCS template names, без предположения о runtime suffix.
+
+| Компонент | Asset | Параметр или механизм | Локальное изменение | Риск и доказательство |
+|---|---|---|---|---|
+| `hilda_staff_astral_bp_C:PS_main_GEN_VARIABLE` | `astral_missile` | Cascade `main`, `main 2`, `glow`, `spark`. `Color` и `Fade` входят в `ParticleModuleColorScaleOverLife_0`. `Spawn` входит в два модуля spawn rate. Размер в size-модулях. | Параметры экземпляра для части эмиссии. Именованный размер не подтверждён. | Масштаб PSC затрагивает вложенный tracker и шлейф. Наличие distribution не означает охват каждого emitter. SCS + `astral_missile.json`. |
+| `hilda_staff_astral_bp_C:PS_trail_GEN_VARIABLE` | `astral_missile_trail` | Cascade AnimTrail, `BeginTrails(track_0, track_1, …, 3.0)` на 498. Штатные instance `Color` vector и `Fade` scalar читаются ColorScaleOverLife. | `Color` — возможный независимый канал. Ширина задаётся при запуске; безопасная точка для её изменения открыта. | `TL - fade` переписывает `Fade` на 714. Не перезапускать trail ради ширины без проверки потери уже нарисованного хвоста. |
+| `hilda_staff_astral_bp_C:PointLight_GEN_VARIABLE` | Встроенный PointLight | `Intensity` 10, `AttenuationRadius` 500. | `SetIntensity` реально вызывается на экземпляре. | 772/819 пишут `Lerp(0, 10, fade)`. Одноразовая запись интенсивности не гарантирует сохранение эффекта при затухании. Свет на окружении и эмиссия частиц измеряются отдельно. |
+| Astral, отдельный PSC из `SpawnEmitterAtLocation` | `astral_missile_shoot` | 573/601/647 берут transform VFX-актора; размер использует scale при спауне. `Color`/`Fade` в ColorScaleOverLife. | Только после точной атрибуции spawn. | Отдельный короткоживущий эффект старта. Поздняя запись в лётный PSC его не изменит. |
+| `hilda_staff_fire_bp_C:ParticleSystem_GEN_VARIABLE` | `fire_missile` | Cascade `main`, `fire residual`, `spark`, `circle`, `ParticleModuleLight_0`. `Color` и `Fade` читаются ColorScaleOverLife, `Power` читается `ParticleModuleParameterDynamic_0`. Размер в size-модулях. | **Первый кандидат** — относительный масштаб листового PSC и один подтверждённый `Color` или `Fade` на конкретном экземпляре, проверяемые отдельно. | Отдельного trail PSC или PointLight у этого BP нет. Масштаб может по-разному влиять на эмиттеры и уже выпущенные частицы. `Fade`/ `Color` не доказаны как общий регулятор света всех эмиттеров. В Fire VFX ubergraph 167/408 управляют активностью, записи этих параметров не обнаружены. |
+| `astral_hit_01_bp_C:ParticleSystem_GEN_VARIABLE`, `fire_hit_01_bp_C:ParticleSystem_GEN_VARIABLE` и их `PointLight_GEN_VARIABLE` | `astral_hit_01`, `fire_hit_01` | Cascade `Color`/`Fade` в ColorScaleOverLife. PSC и свет переопределяют SCS-шаблоны `VFX_Base_bp_C`. | Компоненты адресуемы после привязки отдельного hit VFX к исходному выстрелу. | Общие hit/block ключи. Глобальная правка заденет чужие вызовы. VFX_Base ubergraph 8371/8939 пишет fade/свет; обе строки VFX имеют `UseParamter=false`. |
+| `fire_explosion_b_02_bp_C:ParticleSystem_GEN_VARIABLE` и `:PointLight_GEN_VARIABLE` | `fire_explosion_b_02`, отдельный встроенный PointLight | Cascade `Color`/`Fade` в ColorScaleOverLife, три ParticleModuleLight. BP CDO: `light intensity` 10, `light radius` 1500. | PSC и PointLight — отдельные листья `VFX_Base_bp_C`; визуальный объект требует собственного exact-parent подтверждения. | В акторе также есть GrassCollision (radius 150), наследуемый SphereTrigger и camera-shake class. Масштаб всего VFX-актора не проходит косметическую границу. Базовый fade/light writer может перезаписать значение. `VFX_Player` имеет `UseParamter=false`, поэтому наличие `Paramter.brightness` не доказывает управление этой строкой. |
+
+В Fire-материале `SimpleTransPS_Fire` обнаружен scalar `Emi. Brightness W` (5) в общем MaterialInstanceConstant. Для первого кандидата он не выбран. Нет подтверждённого MID на точном экземпляре, его слота и порядка установки. `Power` — подтверждённый вход Cascade dynamic parameter, связь с итоговой яркостью материала здесь не доказана. Ни для полёта, ни для взрыва не найден именованный instance-параметр размера. Относительный масштаб листа Fire PSC — **POSSIBLE ENGINE API**, отрисовка **RUNTIME NOT TESTED**.
+
+**Следующий отдельный тест.** Один обычный Fire-шаг, штатный strong как контроль и weak по уже записанному `session.shots[sourceId]`. Сначала проверить exact class/row/owner, доступность собственного ChildActor/PSC и окно между готовностью компонента и первой видимой эмиссией. В отдельном разрешённом тесте менять только PSC weak-болта с readback и восстановлением, проверить масштаб и ослабление раздельно, затем сравнить полёт, шлейф, промах и попадание при одинаковом ракурсе. Переход последний strong → следующий weak должен сохранить штатными и сильный болт, и его запоздалый взрыв. К отдельному blast-изменению переходить только после доказательства, какой экземпляр вернул `attach vfx` и как он связан с исходным Fire. Игра и observer в этом аудите не запускались.
+
+<details>
+<summary>SHA-256 дополнительных локальных экспортов</summary>
+
+```text
+hilda_staff_astral_bp.json 696d442a045c59e57223edbb6daa46c34b656db0ce61bf8c88bc444c565a0522
+hilda_staff_astral_bp--ExecuteUbergraph_hilda_staff_astral_bp.bytecode.json c3c36c3bb30c3a40f6e82632d07e175cc069a463bd07ca48045c91e44f21cf8f
+hilda_staff_fire_bp.json 8ef992670651ddca1508b81116948dae770cec5836987a4bcb0f9c0cda93f9b4
+astral_missile.json 103fddec00772b238b15e65287abf6e46b636cb9e582e9941ff016f89c85ef90
+astral_missile_trail.json d589ec16b07a78b48f4abb4a090603e4ce8caa168e4537993e4238cee834af41
+astral_missile_shoot.json 7c6d1d56fb6e071c9db6de849e3d457f9005a4f876e65eb2d4116a479489aaf4
+fire_missile.json 7532e17077471cc373084a1026bc64583c08263ed77f495cad1069037ac63887
+sphere_200.json 670db422ddd08f0626921d60b9247942ffaaf6d782c716b7ae20b4085c4c3489
+HitRespond.json f05660bc8bb4724059875454951ca0ba6fc69959def9ee27f7618ceb8ad5480b
+VFX_Player.json 044c803f9bc98838020beac6efe0aa3ce5c8a88eb993fd040cecb1680d2e6b12
+VFX_Base_bp.json 02e0d23dc09fb3f8b12fefa08d80cb7cedfdf566e1db1c9a0ba7bcfee33d63c1
+VFX_Base_bp--ExecuteUbergraph_VFX_Base_bp.bytecode.json fd73a6613e234701043aa603ad8f1ec6ea1705ffdbfaf020603b0f837f634be7
+astral_hit_01_bp.json 336b618f788cd7451b56b8dab238f511637660b903dfe492c6f730d119b35584
+astral_hit_01.json 1163dc5a015a891e993026292d0625cef3936ae2ce972c0f253305979113458b
+fire_hit_01_bp.json 31f509f7c69be90fc0e0e02121128980adc6a468a2fd4cf2144bd09bfcbba61d
+fire_hit_01.json fe9c9e49c86c2451c851d68272629588c331da4ff7cdfda4a57a6ee6fd0a7e4c
+fire_explosion_b_02_bp.json b790d5a398bc29f88ad0588e1fc14be7a1d2b20ddd46ba85f86e39bb0096a12d
+fire_explosion_b_02.json 747d16e9806ff7f2618783420fd73b3258674d19890cdc5906759319d07e1a02
+SimpleTransPS_Fire.json 0708ec43bfb906da3e4e871b87ed3903b0370742eb0d4bece1a881059e0532e9
+```
+
+</details>
