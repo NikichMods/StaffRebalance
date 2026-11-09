@@ -7,6 +7,9 @@ local fireBolt = assets .. "hilda_staff_bolt_fire.hilda_staff_bolt_fire_C"
 local staffVfx = "/Game/MainContent/Assets/fx/bp/skill/hilda/_staff/"
 local fireVfx = staffVfx .. "hilda_staff_fire_bp.hilda_staff_fire_bp_C"
 local fireParticle = "ParticleSystem " .. staffVfx .. "private/fire_missile.fire_missile"
+-- Match UE4.27 float storage exactly for the readback assertions.
+local weakFireScale = string.unpack("f", string.pack("f", 0.35))
+local weakFireFade = string.unpack("f", string.pack("f", 0.15))
 local fireSphere = "/Game/MainContent/Act/Skill_BP/CommonSkill_BP/sphere_200.sphere_200_C"
 local thunderBolt = assets .. "hilda_staff_bolt_thunder.hilda_staff_bolt_thunder_C"
 local iceBolt = assets .. "hilda_staff_bolt_ice.hilda_staff_bolt_ice_C"
@@ -401,8 +404,8 @@ local function fireFlightVfx(bolt, sourceId)
                 return entry
             end
             apply = function()
-                particle:SetFloatParameter(name, 0.5)
-                assert(fadeEntry().Scalar == 0.5, "fire_vfx_fade_readback")
+                particle:SetFloatParameter(name, weakFireFade)
+                assert(fadeEntry().Scalar == weakFireFade, "fire_vfx_fade_readback")
             end
             restore = function()
                 if particle.InstanceParameters:GetArrayNum() == 0 then return end
@@ -413,9 +416,10 @@ local function fireFlightVfx(bolt, sourceId)
         else
             requireFunction("SceneComponent:SetRelativeScale3D", "StructProperty:NewScale3D")
             apply = function()
-                particle:SetRelativeScale3D({X = 0.75, Y = 0.75, Z = 0.75})
+                particle:SetRelativeScale3D({X = weakFireScale, Y = weakFireScale, Z = weakFireScale})
                 local scale = particle.RelativeScale3D
-                assert(scale.X == 0.75 and scale.Y == 0.75 and scale.Z == 0.75, "fire_vfx_scale_readback")
+                assert(scale.X == weakFireScale and scale.Y == weakFireScale and scale.Z == weakFireScale,
+                    "fire_vfx_scale_readback")
             end
             restore = function()
                 if stockScale() then return end
