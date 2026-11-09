@@ -4,6 +4,7 @@ local path = assert(arg[1])
 local assets = "/Game/MainContent/Act/Skill_BP/PlayerSkill_BP/"
 local astral = assets .. "hilda_staff_bolt_astral.hilda_staff_bolt_astral_C"
 local fireBolt = assets .. "hilda_staff_bolt_fire.hilda_staff_bolt_fire_C"
+local staffVfx = "/Game/MainContent/Assets/fx/bp/skill/hilda/_staff/"
 local fireSphere = "/Game/MainContent/Act/Skill_BP/CommonSkill_BP/sphere_200.sphere_200_C"
 local fireBegin = fireBolt .. ":ReceiveBeginPlay"
 local fireSphereBegin = fireSphere .. ":ReceiveBeginPlay"
@@ -86,6 +87,18 @@ local function setup(options)
         {property("ObjectProperty Owner:Character"), property("NameProperty Owner:ReturnValue")})
     reflected("/Script/Genesis.BaseProjectile:GetCharacterOwner", 0x400, {result})
     reflected("/Script/Engine.Actor:GetOwner", 0x400, {result})
+    reflected("/Script/Engine.ActorComponent:GetOwner", 0x400, {result})
+    reflected("/Script/Engine.Actor:GetParentComponent", 0x400, {result})
+    reflected("/Script/Engine.SceneComponent:GetAttachParent", 0x400, {result})
+    reflected("/Script/Engine.ActorComponent:IsActive", 0x400, {property("BoolProperty Owner:ReturnValue")})
+    reflected("/Script/Engine.PrimitiveComponent:GetCollisionEnabled", 0x400,
+        {property("ByteProperty Owner:ReturnValue")})
+    if not options.missingScale then
+        reflected("/Script/Engine.SceneComponent:SetRelativeScale3D", 0x400,
+            {property("StructProperty Owner:NewScale3D")})
+    end
+    reflected("/Script/Engine.FXSystemComponent:SetFloatParameter", 0x400,
+        {property("NameProperty Owner:ParameterName"), property("FloatProperty Owner:Param")})
     reflected(begin, 0)
     if not options.missingThunder then reflected(thunderBegin, 0) end
     if not options.missingIceBolt then reflected(iceBegin, 0) end
@@ -110,7 +123,9 @@ local function setup(options)
     e.StaticFindObject = function(name) return functions[name] end
     e.EngineTickAvailable = true
     e.EGameThreadMethod = {EngineTick = 1}
-    e.Key = {F3 = 3, F7 = 7}
+    e.Key = {F3 = 3, F4 = 4, F7 = 7}
+    e.EFindName = {FNAME_Find = 0}
+    e.FName = function(value) return {ToString = function() return value end} end
     e.IsKeyBindRegistered = function(key) return options.collision and key == 3 or false end
     e.RegisterKeyBind = function(key, callback) keys[key] = callback end
     e.ExecuteInGameThread = function(callback, method) assert(method == 1); callback() end
@@ -142,6 +157,52 @@ local function setup(options)
         return s
     end
 
+    local function fireFlight(bolt)
+        local function native(name, address)
+            local component = object(name, address)
+            component.GetClass = function()
+                return {GetFullName = function() return "Class /Script/Engine." .. name end}
+            end
+            return component
+        end
+        local mount = native("ChildActorComponent", 31)
+        local child = object("FireVFX", 32, nil, staffVfx .. "hilda_staff_fire_bp.hilda_staff_fire_bp_C")
+        local particle = native("ParticleSystemComponent", 33)
+        bolt.RootArrow = object("RootArrow", 34)
+        bolt.hilda_staff_fire_bp = mount
+        mount.GetOwner = function() return bolt end
+        mount.GetAttachParent = function() return bolt.RootArrow end
+        mount.ChildActor = child
+        child.GetParentComponent = function() return mount end
+        child.Scene = object("Scene", 35)
+        child.ParticleSystem = particle
+        particle.GetOwner = function() return child end
+        particle.GetAttachParent = function() return child.Scene end
+        particle.Template = object("FireTemplate", 36, nil, nil,
+            "ParticleSystem " .. staffVfx .. "private/fire_missile.fire_missile")
+        particle.IsActive = function() return true end
+        particle.GetCollisionEnabled = function() return 0 end
+        particle.AttachChildren = {GetArrayNum = function() return 0 end}
+        particle.bAllowRecycling = false
+        particle.RelativeScale3D = {X = 1, Y = 1, Z = 1}
+        particle.InstanceParameters = {
+            GetArrayNum = function(self) return #self end,
+            Empty = function(self) self[1] = nil end,
+        }
+        particle.scaleWrites, particle.fadeWrites = 0, 0
+        particle.SetRelativeScale3D = function(self, scale)
+            self.scaleWrites = self.scaleWrites + 1
+            self.RelativeScale3D = scale
+            if options.partialScale and scale.X ~= 1 then error("scale failure after write") end
+        end
+        particle.SetFloatParameter = function(self, name, value)
+            self.fadeWrites = self.fadeWrites + 1
+            self.InstanceParameters[1] = {Name = name, ParamType = 1, Scalar = value}
+            if options.partialFade then error("fade failure after write") end
+        end
+        return particle
+    end
+
     assert(loadfile(path, "t", e))()
     return {
         keys = keys,
@@ -163,6 +224,7 @@ local function setup(options)
         fireBolt = function(name, owner, key)
             return source(name, fireBolt, key or "hilda_staff_bolt_fire", owner)
         end,
+        fireFlight = fireFlight,
         thunderBolt = function(name, owner, key)
             return source(name, thunderBolt, key or "hilda_staff_bolt_thunder", owner)
         end,
@@ -499,6 +561,85 @@ do
 end
 -- Fire changes stay isolated in these dev-only tests. Real UE4SS integration is a separate gate.
 do
+    local function fire(t, name, configure)
+        t.beginStep("hilda_staff_atk1_fire")
+        local bolt = t.fireBolt(name)
+        local particle = t.fireFlight(bolt)
+        if configure then configure(bolt, particle) end
+        t.emit(fireBegin, parameter(bolt))
+        t.emit(fireBegin, parameter(bolt))
+        t.endStep()
+        return bolt, particle
+    end
+
+    local function emptyReserve(t)
+        t.keys[3]()
+        local lastStrong
+        for i = 1, 3 do
+            local bolt, particle = fire(t, "VfxStrong" .. i, function(b)
+                b.hilda_staff_fire_bp.GetOwner = function() error("strong must not resolve VFX") end
+            end)
+            assert(particle.scaleWrites == 0 and particle.fadeWrites == 0)
+            lastStrong = bolt
+        end
+        return lastStrong
+    end
+
+    local t = setup()
+    local strong = emptyReserve(t)
+    local weak, scaled = fire(t, "VfxScaled")
+    assert(scaled.scaleWrites == 1 and scaled.RelativeScale3D.X == 0.75 and scaled.fadeWrites == 0)
+    t.keys[4]()
+    local _, faded = fire(t, "VfxFaded")
+    assert(faded.fadeWrites == 1 and faded.InstanceParameters[1].Scalar == 0.5 and faded.scaleWrites == 0)
+    assert(t.count("FIRE_VFX_APPLIED") == 2)
+    local strongSphere = t.fireSphere("VfxDelayedStrong", strong)
+    local weakSphere = t.fireSphere("VfxWeakSphere", weak)
+    t.emit(fireSphereBegin, parameter(strongSphere))
+    t.emit(fireSphereBegin, parameter(weakSphere))
+    local weakRate = string.unpack("f", string.pack("f", 0.45))
+    assert(strongSphere.rate == 0.9 and weakSphere.rate == weakRate)
+
+    local cases = {
+        {reason = "missing:", options = {missingScale = true}},
+        {reason = "fire_vfx_child", configure = function(bolt)
+            bolt.hilda_staff_fire_bp.ChildActor = nil
+        end},
+        {reason = "fire_vfx_particle", configure = function(_, particle)
+            particle.GetOwner = function() return object("OtherVFX", 90) end
+        end},
+        {reason = "fire_vfx_template", configure = function(_, particle) particle.Template = nil end},
+        {reason = "fire_vfx_not_ready_or_not_leaf", configure = function(_, particle)
+            particle.AttachChildren.GetArrayNum = function() return 1 end
+        end},
+        {reason = "fire_vfx_not_ready_or_not_leaf", configure = function(_, particle)
+            particle.IsActive = function() return false end
+        end},
+        {reason = "fire_vfx_not_ready_or_not_leaf", configure = function(_, particle)
+            particle.GetCollisionEnabled = function() return 1 end
+        end},
+        {reason = "rollback=ok", options = {partialScale = true}, scaleWrites = 2},
+        {reason = "rollback=ok", options = {partialFade = true}, fadeWrites = 1},
+    }
+    for _, case in ipairs(cases) do
+        local test = setup(case.options)
+        emptyReserve(test)
+        if case.fadeWrites then test.keys[4]() end
+        local bolt, particle = fire(test, "VfxSkip", case.configure)
+        assert(test.count("FIRE_VFX_SKIP") == 1 and test.has(case.reason))
+        assert(particle.scaleWrites == (case.scaleWrites or 0) and particle.RelativeScale3D.X == 1)
+        assert(particle.fadeWrites == (case.fadeWrites or 0) and #particle.InstanceParameters == 0)
+        local sphere = test.fireSphere("VfxSkipSphere", bolt)
+        test.emit(fireSphereBegin, parameter(sphere))
+        assert(sphere.rate == weakRate and test.count("FAILED") == 0)
+        local _, nextParticle = fire(test, "VfxDisabled")
+        assert(nextParticle.scaleWrites == 0 and nextParticle.fadeWrites == 0)
+        test.keys[7]()
+        assert(test.has("hooks_remaining=0"))
+    end
+end
+
+do
     local t = setup({missingFire = true})
     t.keys[3]()
     assert(t.has("FIRE_UNAVAILABLE reason=missing:"))
@@ -831,5 +972,5 @@ do
     s.endStep()
     s.keys[7]()
 end
-print("PASS: dev Astral/Fire/Thunder/Ice basic shared reserve, repeated parent-linked Ice pulses, legacy guards")
+print("PASS: dev shared reserve, parent-linked damage, Fire flight VFX guards and rollback")
 

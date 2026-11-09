@@ -4,6 +4,9 @@ local prefix = "STAFF_RESERVE01"
 local assets = "/Game/MainContent/Act/Skill_BP/PlayerSkill_BP/"
 local astral = assets .. "hilda_staff_bolt_astral.hilda_staff_bolt_astral_C"
 local fireBolt = assets .. "hilda_staff_bolt_fire.hilda_staff_bolt_fire_C"
+local staffVfx = "/Game/MainContent/Assets/fx/bp/skill/hilda/_staff/"
+local fireVfx = staffVfx .. "hilda_staff_fire_bp.hilda_staff_fire_bp_C"
+local fireParticle = "ParticleSystem " .. staffVfx .. "private/fire_missile.fire_missile"
 local fireSphere = "/Game/MainContent/Act/Skill_BP/CommonSkill_BP/sphere_200.sphere_200_C"
 local thunderBolt = assets .. "hilda_staff_bolt_thunder.hilda_staff_bolt_thunder_C"
 local iceBolt = assets .. "hilda_staff_bolt_ice.hilda_staff_bolt_ice_C"
@@ -346,6 +349,96 @@ local function thunderBegin(pawn, context)
         .. " effective=" .. effective .. " source=" .. sourceId)
 end
 
+local function fireFlightVfx(bolt, sourceId)
+    local probe = session.fireVfxProbe or "scale"
+    local function requireFunction(path, shape)
+        local ready, reason = check("/Script/Engine." .. path, true, false, shape)
+        assert(ready, reason)
+    end
+    local function same(object, expected)
+        return valid(object) and valid(expected) and id(object) == id(expected)
+    end
+    local function nativeClass(object, name)
+        return valid(object) and object:GetClass():GetFullName() == "Class /Script/Engine." .. name
+    end
+
+    local ok, reason = pcall(function()
+        requireFunction("ActorComponent:GetOwner", "ObjectProperty:ReturnValue")
+        requireFunction("Actor:GetParentComponent", "ObjectProperty:ReturnValue")
+        requireFunction("SceneComponent:GetAttachParent", "ObjectProperty:ReturnValue")
+        requireFunction("ActorComponent:IsActive", "BoolProperty:ReturnValue")
+        requireFunction("PrimitiveComponent:GetCollisionEnabled", "ByteProperty:ReturnValue")
+
+        local mount = bolt.hilda_staff_fire_bp
+        assert(nativeClass(mount, "ChildActorComponent") and same(mount:GetOwner(), bolt)
+            and same(mount:GetAttachParent(), bolt.RootArrow), "fire_vfx_mount")
+        local child = mount.ChildActor
+        assert(exact(child, fireVfx) and same(child:GetParentComponent(), mount), "fire_vfx_child")
+        local particle = child.ParticleSystem
+        assert(nativeClass(particle, "ParticleSystemComponent") and same(particle:GetOwner(), child)
+            and same(particle:GetAttachParent(), child.Scene), "fire_vfx_particle")
+        local template = particle.Template
+        assert(valid(template) and template:GetFullName() == fireParticle, "fire_vfx_template")
+        assert(particle:IsActive() and particle:GetCollisionEnabled() == 0
+            and particle.AttachChildren:GetArrayNum() == 0
+            and particle.bAllowRecycling == false, "fire_vfx_not_ready_or_not_leaf")
+
+        local function stockScale()
+            local scale = particle.RelativeScale3D
+            return scale.X == 1 and scale.Y == 1 and scale.Z == 1
+        end
+        assert(stockScale() and particle.InstanceParameters:GetArrayNum() == 0, "fire_vfx_nonstock")
+        local apply, restore
+        if probe == "fade" then
+            requireFunction("FXSystemComponent:SetFloatParameter", "NameProperty:ParameterName,FloatProperty:Param")
+            local name = FName("Fade", EFindName.FNAME_Find)
+            assert(name:ToString() == "Fade", "fire_vfx_fade_name")
+            local function fadeEntry()
+                local params = particle.InstanceParameters
+                assert(params:GetArrayNum() == 1, "fire_vfx_fade_count")
+                local entry = params[1]
+                assert(entry.Name:ToString() == "Fade" and entry.ParamType == 1, "fire_vfx_fade_entry")
+                return entry
+            end
+            apply = function()
+                particle:SetFloatParameter(name, 0.5)
+                assert(fadeEntry().Scalar == 0.5, "fire_vfx_fade_readback")
+            end
+            restore = function()
+                if particle.InstanceParameters:GetArrayNum() == 0 then return end
+                fadeEntry()
+                particle.InstanceParameters:Empty()
+                assert(particle.InstanceParameters:GetArrayNum() == 0, "fire_vfx_fade_restore")
+            end
+        else
+            requireFunction("SceneComponent:SetRelativeScale3D", "StructProperty:NewScale3D")
+            apply = function()
+                particle:SetRelativeScale3D({X = 0.75, Y = 0.75, Z = 0.75})
+                local scale = particle.RelativeScale3D
+                assert(scale.X == 0.75 and scale.Y == 0.75 and scale.Z == 0.75, "fire_vfx_scale_readback")
+            end
+            restore = function()
+                if stockScale() then return end
+                particle:SetRelativeScale3D({X = 1, Y = 1, Z = 1})
+                assert(stockScale(), "fire_vfx_scale_restore")
+            end
+        end
+        log("FIRE_VFX_WRITE", "probe=" .. probe .. " source=" .. sourceId)
+        local applied, problem = pcall(apply)
+        if not applied then
+            local restored = pcall(restore)
+            error("write:" .. tostring(problem) .. " rollback=" .. (restored and "ok" or "failed"), 0)
+        end
+    end)
+    if ok then
+        log("FIRE_VFX_APPLIED", "probe=" .. probe .. " source=" .. sourceId)
+    else
+        session.fireVfxError = true
+        log("FIRE_VFX_SKIP", "probe=" .. probe .. " reason=" .. tostring(reason):sub(-220)
+            .. " action=disable_vfx_for_session")
+    end
+end
+
 local function fireBegin(pawn, context)
     local bolt = context:get()
     assert(exact(bolt, fireBolt), "unexpected_fire_bolt_context")
@@ -382,6 +475,9 @@ local function fireBegin(pawn, context)
     log("FIRE_BOLT", "skill=" .. skill .. " mode=" .. mode .. " before=" .. before
         .. " reserve=" .. session.reserve .. " debit=" .. (mode == "strong" and 1 or 0)
         .. " source=" .. sourceId)
+    if session.fireParents[sourceId] == "weak" and not session.fireVfxError then
+        fireFlightVfx(bolt, sourceId)
+    end
 end
 
 local function fireExplosion(pawn, context)
@@ -784,6 +880,17 @@ local ok, err = pcall(function()
     end
     bind(Key.F7, stop)
     bind(Key.F3, start)
+    local fadeReady = pcall(function()
+        assert(Key.F4 and not IsKeyBindRegistered(Key.F4), "fade_key_unavailable")
+        bind(Key.F4, function()
+            if not session or session.fireVfxError then return end
+            session.fireVfxProbe = session.fireVfxProbe == "fade" and "scale" or "fade"
+            log("FIRE_VFX_PROBE", "probe=" .. session.fireVfxProbe)
+        end)
+    end)
+    if not fadeReady then
+        log("FIRE_VFX_PROBE", "probe=scale fade_key=unavailable")
+    end
 end)
 if ok then log("LOADED", "F3=start F7=stop astral_fire_basic_shared_reserve=true")
 else fail(err) end
