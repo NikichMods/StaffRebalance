@@ -31,5 +31,8 @@ jobs:
           luac5.4 -p dev/StaffRebalanceDev/Scripts/main.lua
           luac5.4 -p dev/StaffRebalanceDev/Scripts/StaffReserveHud.lua
           luac5.4 -p dev/StaffRebalanceDev/tests.lua
+          luac5.4 -p dev/StaffRebalanceDev/hud_tests.lua
       - name: Run dev mock suite
-        run: lua5.4 dev/StaffRebalanceDev/tests.lua dev/StaffRebalanceDev/Scripts/main.lua
+        run: |
+          lua5.4 dev/StaffRebalanceDev/tests.lua dev/StaffRebalanceDev/Scripts/main.lua
+          lua5.4 dev/StaffRebalanceDev/hud_tests.lua dev/StaffRebalanceDev/Scripts/StaffReserveHud.lua

@@ -120,6 +120,13 @@ return function(snapshot, log)
             slot(root,fill,x+3,7,16,16,0,0,0,0)
             state.fills[i]=ref(fill)
         end
+        -- Constructed children started Hidden so partial configuration cannot flash.
+        -- Reveal only fully configured, owned widgets; otherwise the root is empty.
+        for _,childRef in ipairs(state.children) do
+            local child=resolve(childRef)
+            assert(child,"own_child_lost_during_attach")
+            child:SetVisibility(3)
+        end
         root:SetVisibility(3) -- SelfHitTestInvisible, no focus/input change
         dirty=true
         log("ATTACHED","slots="..capacity.." owned_widgets="..(#state.children+1))

@@ -1104,7 +1104,7 @@ do
     s.endStep()
     s.keys[7]()
 end
-print("PASS: dev shared reserve, parent-linked damage, Fire flight VFX guards and rollback")
+-- PASS marker belongs after all regression assertions, including HUD bridge.
 
 
 -- The HUD bridge is notification-only: nothing on zero weak fire, capped
@@ -1132,3 +1132,5 @@ do
     s.keys[7]()
     assert(s.hudEvents[8]=="stop" and not next(s.hooks))
 end
+
+print("PASS: dev shared reserve, parent-linked damage, Fire flight VFX guards, rollback and reserve HUD bridge")
