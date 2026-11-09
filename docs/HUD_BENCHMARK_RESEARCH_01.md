@@ -69,3 +69,7 @@ Without explaining the mechanical loop first, ask a novice player to play a few 
 ## Research verdict
 
 **Use the original three-segment concept as a baseline, not the completed design.** Highest expected benefit comes from semantic identification (this is staff *strength*, not ammunition), direct visual cause/effect on spend and melee recharge, and accurate weak-at-zero signaling. Implement only after a small comparative visual study (A vs B) or one targeted accepted layout choice, then mock and live-test on available Astral/Fire. Production remains BLOCKED. Neither this research nor an attractive static icon proves self-explanatory UX without observing real players.
+
+## Follow-up: readable shot silhouette (2026-11-09)
+
+The owner suggested a **diegetic companion cue** to the reserve indicator: keep vanilla strong staff projectile visual size/brightness, and modestly reduce weak staff projectile size/glow. This addresses the game's perceived oversized/brilliant magic FX and makes strong-versus-weak legible even with the HUD faded. Visual identity must follow the executed shot/child effects, **not current currency after debit**. Research and third-party-mod limits: [STAFF_VFX_FEEDBACK_RESEARCH_01](STAFF_VFX_FEEDBACK_RESEARCH_01.md). No implementation or game VFX PASS. Interface still needs to convey exact reserve count, earning rule and that empty reserve means weakened rather than disabled staff use.
