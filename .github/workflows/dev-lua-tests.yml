@@ -29,6 +29,7 @@ jobs:
       - name: Parse dev Lua sources
         run: |
           luac5.4 -p dev/StaffRebalanceDev/Scripts/main.lua
+          luac5.4 -p dev/StaffRebalanceDev/Scripts/StaffReserveHud.lua
           luac5.4 -p dev/StaffRebalanceDev/tests.lua
       - name: Run dev mock suite
         run: lua5.4 dev/StaffRebalanceDev/tests.lua dev/StaffRebalanceDev/Scripts/main.lua

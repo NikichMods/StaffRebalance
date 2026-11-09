@@ -67,6 +67,7 @@ local capacity = 3 -- unchanged gameplay reserve
 local diagnosticCapacity = 50 -- log-only, counts eligible unique contacts independent of gameplay cap
 local hooks = {}
 local session, closed
+local hudDisplay
 
 local function log(event, detail)
     print(prefix .. " " .. event .. " " .. (detail or "") .. "\n")
@@ -139,6 +140,17 @@ end
 -- Single authoritative reserve transition. No HUD mirror or event bus:
 -- future presentation can observe changes here and read session.reserve on attach.
 -- A capped melee contact, weak shot at zero, or rest while full is a no-op.
+-- HUD is optional presentation only. A missing/failed UMG module cannot disable combat.
+do
+    local loaded,factory=pcall(require,"StaffReserveHud")
+    if loaded and type(factory)=="function" then
+        local ok,display=pcall(factory,
+            function() return session and session.reserve, capacity, session and session.player end,
+            function(event,detail) log("HUD_"..event,detail) end)
+        if ok and type(display)=="table" then hudDisplay=display end
+    end
+end
+
 local function setReserve(nextValue)
     assert(session and math.type(session.reserve) == "integer"
         and math.type(nextValue) == "integer"
@@ -146,6 +158,10 @@ local function setReserve(nextValue)
     local before = session.reserve
     if before == nextValue then return before, nextValue, false end
     session.reserve = nextValue
+    if hudDisplay then
+        local ok,reason=pcall(hudDisplay.changed,before,nextValue)
+        if not ok then log("HUD_ERROR","change="..tostring(reason):sub(1,160));hudDisplay=nil end
+    end
     return before, nextValue, true
 end
 
@@ -175,6 +191,7 @@ local function player()
     return pawn
 end
 local function fail(reason)
+    if hudDisplay then pcall(hudDisplay.stop) end
     session, closed = nil, true
     log("FAILED", "reason=" .. tostring(reason):sub(1, 200) .. " action=F7_then_exit")
 end
@@ -935,6 +952,10 @@ local function start()
         .. " thunder=" .. (thunderReady and "ready" or "unavailable")
         .. " ice=" .. (iceReady and "ready" or "unavailable")
         .. " diag_total=0 diag_capacity=" .. diagnosticCapacity)
+    if hudDisplay then
+        local ok,reason=pcall(hudDisplay.start)
+        if not ok then log("HUD_ERROR","start="..tostring(reason):sub(1,160));hudDisplay=nil end
+    end
 end
 
 local function stop()
@@ -947,6 +968,10 @@ local function stop()
             .. " hammer=" .. (d.byWeapon.hammer or 0)
             .. " sword_shield=" .. (d.byWeapon.sword_shield or 0)
             .. " bracelets=" .. (d.byWeapon.bracelets or 0))
+    end
+    if hudDisplay then
+        local ok,reason=pcall(hudDisplay.stop)
+        if not ok then log("HUD_ERROR","stop="..tostring(reason):sub(1,160)) end
     end
     session, closed = nil, true
     cleanup()

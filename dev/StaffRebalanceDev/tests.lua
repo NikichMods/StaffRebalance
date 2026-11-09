@@ -142,6 +142,23 @@ local function setup(options)
     end
     e.UnregisterHook = function(name) hooks[name] = nil end
     e.print = function(line) lines[#lines + 1] = line end
+    -- In all core tests the UMG presentation is a no-op stub. Its callback
+    -- captures actual reserve transitions; the real module has separate UI gates.
+    local hudEvents={}
+    e.require = function(name)
+        assert(name=="StaffReserveHud")
+        return function(read)
+            return {
+                start=function() hudEvents[#hudEvents+1]="start" end,
+                changed=function(before,after)
+                    local current=read()
+                    assert(current==after and before~=after)
+                    hudEvents[#hudEvents+1]=tostring(before)..">"..tostring(after)
+                end,
+                stop=function() hudEvents[#hudEvents+1]="stop" end,
+            }
+        end
+    end
 
     local function source(name, classPath, key, owner, initialRate)
         local s = object(name, 20, nil, classPath)
@@ -239,6 +256,7 @@ local function setup(options)
     return {
         keys = keys,
         hooks = hooks,
+        hudEvents = hudEvents,
         has = function(fragment) return table.concat(lines):find(fragment, 1, true) end,
         count = function(event)
             local _, count = table.concat(lines):gsub("STAFF_RESERVE01 " .. event .. " ", "")
@@ -1088,3 +1106,29 @@ do
 end
 print("PASS: dev shared reserve, parent-linked damage, Fire flight VFX guards and rollback")
 
+
+-- The HUD bridge is notification-only: nothing on zero weak fire, capped
+-- melee, duplicates or a rest with unchanged full reserve.
+do
+    local s=setup()
+    s.keys[3]()
+    assert(s.hudEvents[1]=="start")
+    shot(s,"Hud1");shot(s,"Hud2");shot(s,"Hud3")
+    assert(s.hudEvents[2]=="3>2" and s.hudEvents[3]=="2>1"
+        and s.hudEvents[4]=="1>0")
+    shot(s,"HudWeak")
+    assert(#s.hudEvents==4)
+    local blade=s.blade("HudMelee")
+    contact(s,blade,target);contact(s,blade,target)
+    assert(#s.hudEvents==5 and s.hudEvents[5]=="0>1")
+    contact(s,s.blade("HudMelee2"),target)
+    contact(s,s.blade("HudMelee3"),target)
+    assert(s.hudEvents[6]=="1>2" and s.hudEvents[7]=="2>3")
+    contact(s,s.blade("HudOverCap"),target)
+    assert(#s.hudEvents==7)
+    s.emit(conduit .. "Interact_Rest",point)
+    s.emit(recovery,game);s.emit(context,nil,point)
+    assert(#s.hudEvents==7)
+    s.keys[7]()
+    assert(s.hudEvents[8]=="stop" and not next(s.hooks))
+end
