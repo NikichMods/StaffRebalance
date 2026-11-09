@@ -31,6 +31,8 @@
 
 **Ice/Thunder live-runtime проверки отложены решением владельца на неопределённый срок**, поскольку стихии сейчас недоступны в прохождении: staff + melee `runtime NOT TESTED`, а соответствующие источники прошли только статическое/mock/CI покрытие. **Не повторять запрос на их игровой тест перед HUD или балансом, не подменять статус на PASS.** Игровые прогоны Astral/Fire и их принятые выводы сохраняются.
 
+**Сравнительное HUD/UX-исследование выполнено:** [HUD Benchmark Research 01](HUD_BENCHMARK_RESEARCH_01.md) сравнивает Hyper Light Drifter, Hollow Knight, Lies of P, Prince of Persia и Remnant II, включает материалы Celia Hodent, NN/g и Microsoft/Xbox Accessibility. Главный вывод — три ромба сами по себе не объясняют источник пополнения и не должны подразумевать запрет стрельбы на нуле; нужен смысловой знак посоха, явная реакция на подтверждённый melee-credit, и сохранение индикации слабого режима при нуле. **Это исследование, дизайн не утверждён, код HUD не менялся.**
+
 **Начата техническая проработка HUD:** [HUD Design 01](HUD_DESIGN_01.md) предлагает маленький собственный индикатор 0..capacity (текущий dev 3), отображающий только `session.reserve` и обновляющийся при штатных debit/melee/rest. Существующий [CombatHUD 0.4.1](https://github.com/NikichMods/CombatHUD/blob/main/docs/STATUS.md) остаётся независимым и неизменяемым; его 17 native opacity targets и нативный menu-owner не трогать. Путь — собственное Canvas-поддерево в `LeftBottom_Panel`, с game-thread/lifecycle guards. Выбор внешнего вида/точной геометрии ещё **PROPOSED**, сам HUD **NOT IMPLEMENTED/NOT TESTED**. Следующий gate — узкий mock-кандидат + один live-тест на Astral/Fire и проверка совместимости CombatHUD; не потреблять Ice/Thunder gate.
 
 ## Следующий узкий шаг
