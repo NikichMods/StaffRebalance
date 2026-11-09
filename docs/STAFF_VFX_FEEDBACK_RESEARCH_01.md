@@ -200,3 +200,15 @@ SimpleTransPS_Fire.json 0708ec43bfb906da3e4e871b87ed3903b0370742eb0d4bece1a88105
 4. Затем можно проверить **комбинированные умеренные** scale+fade на flight как независимый эстетический A/B с уже доказанными guard'ами, не назначая исследовательские 0.35/0.15 final values автоматически.
 
 **Вердикт:** Fire flight **runtime contrast PASS, dev only**; отдельный Fire explosion **linkage NOT VERIFIED, blast cosmetic BLOCKED**. Нет причин снова исследовать исходный `fire_missile` PSC или трогать gameplay damage; HUD-разработка и deferred Ice/Thunder не меняются.
+
+
+### Независимая сверка приложенного UE4SS-лога — 2026-11-09
+
+Оригинальный `ab-UE4SS.log` передан владельцем в ChatGPT отдельно от GitHub. Лог **не публиковался** в репозитории. Прямая проверка прикреплённого файла: **70 201 байт, 786 строк**, SHA-256 `a14c1683e8fb14e8cf1127e21235d82cb3c636c80b028c534b502346935a81c1` — точное совпадение с отчётом A/B 02. Дата в журнале 2026-11-09; UE4SS `83330635` / UE4.27.
+
+- `START reserve=3 hooks=14` — строка 730; три `FIRE_BOLT mode=strong` 732, 736, 740 дают 3→2→1→0 без `FIRE_VFX_WRITE` для этих акторов. Сильные `FIRE_SPHERE` 734, 738, 742 сохраняют `effective≈0.90`.
+- Четыре `FIRE_BOLT mode=weak` 744, 750, 757, 763 при резерве 0; два `FIRE_VFX_WRITE/APPLIED probe=scale` 745–746 и 751–752, два `probe=fade` 758–759 и 764–765 после F4 755. В тестовом фрагменте **нулевое** число `FIRE_VFX_SKIP`, `STAFF_RESERVE01 SKIP` и `STAFF_RESERVE01 ERROR`. Слабые `FIRE_SPHERE` 748, 754, 761, 767 дают `effective≈0.45`, с совпадающими ID родителей соответствующих болтов.
+- `DIAG_SUMMARY total=0` — 768, melee в этом A/B не испытывался. Все 14 зарегистрированных StaffRebalance script hooks перечислены при Unregister 769–780; `STOP ... hooks_remaining=0` — 781; обе native Begin/End пары сняты в 782–785. Это проверка штатного снятия хуков в рамках данного сеанса, не общий lifecycle/game regression PASS.
+- **Граница:** последний strong `FIRE_SPHERE` (742) зафиксирован **раньше** первого weak `FIRE_BOLT` (744); overlap strong-late-explosion/weak-early-bolt не испытывался. Нет runtime записей для `fire_explosion_b_02_bp_C` / blast PSC. `FIRE_VFX_APPLIED` означает успешный пройденный кодовый guard/readback, **не** количественное измерение яркости/размера. Перцептивная разница остаётся результатом отдельного наблюдения владельца, указанного в отчёте; сырых кадров для количественной сравнимости нет. Проблемы других модов по этому журналу не диагностировались.
+
+**Итог direct-source audit:** подтверждены подлинность/идентичность журнала и конкретный Fire Flight VFX 02 источник событий. Ранее записанный `runtime contrast PASS` относится к полёту, а не к blast, суммарному балансу яркости или четырём стихиям. Blast ownership gate остаётся открытым.
