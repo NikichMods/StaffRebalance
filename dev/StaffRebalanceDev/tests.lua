@@ -62,7 +62,7 @@ local function setup(options)
     e._G = e
     e.os = {time = function() return options.now or 100 end}
     local keys, hooks, lines, functions = {}, {}, {}, {}
-    local pawn = object("Hilda", 1, "hilda_BP_C")
+    local pawn = object("Hilda", 1, "hilda_BP_C", "/Game/Test/hilda_BP.hilda_BP_C")
     local anim = object("HildaAnim", 3, nil, "/Game/MainContent/Assets/creature/01_character/hilda/hilda_AnimBP.hilda_AnimBP_C")
     anim.doing = "None"
     anim.GetDoingSkill = function() return {ToString = function() return anim.doing end} end
