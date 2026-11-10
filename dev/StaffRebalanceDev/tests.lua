@@ -60,6 +60,7 @@ local function setup(options)
     options = options or {}
     local e = setmetatable({}, {__index = _G})
     e._G = e
+    e.os = {time = function() return options.now or 100 end}
     local keys, hooks, lines, functions = {}, {}, {}, {}
     local pawn = object("Hilda", 1, "hilda_BP_C")
     local anim = object("HildaAnim", 3, nil, "/Game/MainContent/Assets/creature/01_character/hilda/hilda_AnimBP.hilda_AnimBP_C")
@@ -265,6 +266,7 @@ local function setup(options)
         bolt = function(name, owner) return source(name, astral, "hilda_staff_bolt_astral", owner) end,
         otherBolt = function(name) return source(name, astral, "other_astral_key") end,
         setSkill = function(value) options.skill = value end,
+        setTime = function(value) options.now = value end,
         setSaved = function(value) options.saved = value end,
         blade = function(name, owner) return source(name, daggers, "hilda_dual_attack_astral", owner) end,
         melee = function(name, kind, owner, row)
@@ -327,6 +329,44 @@ local wrongPoint = parameter(object("ConduitB", 51))
 local game = parameter(object("MainGameInstance", 52))
 local function contact(test, blade, enemy)
     test.emit(hit, enemy, parameter(blade), nil, nil, parameter(0))
+end
+
+-- HUD 01 research trace samples the callback before the melee guards.
+do
+    local t = setup()
+    t.keys[3]()
+    contact(t, t.bolt("Staff"), target)
+    assert(t.count("MELEE_TRACE") == 0)
+    t.setSkill("hilda_dual_atk1")
+    contact(t, t.blade("Ordinary"), target)
+    assert(t.has('row="hilda_dual_attack_astral"') and t.has('skill_now="hilda_dual_atk1"'))
+    t.setSkill("hilda_dual_dodgeatk")
+    local unknown = t.melee("Unknown", "daggers_base", nil, "unexpected_row")
+    contact(t, unknown, target)
+    assert(t.has('row="unexpected_row"') and t.has('skill_now="hilda_dual_dodgeatk"'))
+    local foreign = object("Foreign", 98, "Enemy", "/Game/Enemy.Enemy_C")
+    contact(t, t.blade("Foreign", foreign), target)
+    assert(t.has("owner_id=98") and t.has("owner_is_hilda=false"))
+    for _ = 1, 24 do contact(t, unknown, target) end
+    assert(t.count("MELEE_TRACE") == 24 and t.count("MELEE") == 1)
+    t.keys[7]()
+    assert(not next(t.hooks))
+
+    t = setup()
+    t.keys[3]()
+    local blade = t.blade("Trace read failure")
+    local owner = blade.GetCharacterOwner()
+    local getOwnerClass = owner.GetClass
+    owner.GetClass = function()
+        local class = getOwnerClass()
+        class.GetFullName = function() error("trace-only class read failed") end
+        return class
+    end
+    contact(t, blade, target)
+    assert(t.has("MELEE_TRACE sample=1 status=read_failed") and t.count("MELEE") == 1)
+    t.setTime(190)
+    contact(t, t.blade("After deadline"), target)
+    assert(t.count("MELEE_TRACE") == 1 and t.count("MELEE") == 2)
 end
 
 for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do

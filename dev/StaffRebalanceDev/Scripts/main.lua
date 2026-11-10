@@ -65,6 +65,7 @@ local GLOBAL = "/Script/Genesis.Default__GameGlobal"
 local animSkill = "/Script/Genesis.BaseCharacterAnimInstance:"
 local capacity = 3 -- unchanged gameplay reserve
 local diagnosticCapacity = 50 -- log-only, counts eligible unique contacts independent of gameplay cap
+local meleeTraceSeconds, meleeTraceLimit = 90, 24 -- HUD 01 investigation only
 local hooks = {}
 local session, closed
 local hudDisplay
@@ -737,6 +738,34 @@ local function meleeKind(source)
     return nil
 end
 
+local function traceMeleeHit(pawn, source, target)
+    local trace = session.meleeTrace
+    if trace.remaining == 0 or os.time() >= trace.deadline then return end
+    trace.remaining = trace.remaining - 1
+    local sample = meleeTraceLimit - trace.remaining
+    local ok, detail = pcall(function()
+        local owner = source:GetCharacterOwner()
+        local ownerClass, ownerAddress, ownerIsHilda = "invalid", "-", false
+        if valid(owner) then
+            ownerClass = owner:GetClass():GetFullName()
+            ownerAddress = tostring(owner:GetAddress())
+            ownerIsHilda = id(owner) == session.player
+        end
+        local skillRead, skill = pcall(function()
+            return StaticFindObject(GLOBAL):GetDoingSkill(pawn):ToString()
+        end)
+        return ("sample=%d reserve=%d source_id=%s class=%q row=%q owner_id=%s owner_class=%q owner_is_hilda=%s target_id=%s skill_now=%q")
+            :format(sample, session.reserve, tostring(source:GetAddress()), source:GetClass():GetFullName(),
+                source.ProjectileDataName:ToString(), ownerAddress, ownerClass, tostring(ownerIsHilda),
+                tostring(target:GetAddress()), skillRead and skill or "unavailable")
+    end)
+    if ok then
+        log("MELEE_TRACE", detail)
+    else
+        log("MELEE_TRACE", "sample=" .. sample .. " status=read_failed")
+    end
+end
+
 local function hit(pawn, context, sourceParam, _component, _position, damageParam)
     local target, source = context:get(), sourceParam:get()
     if not valid(target) or not valid(source) then return end
@@ -784,6 +813,7 @@ local function hit(pawn, context, sourceParam, _component, _position, damagePara
         end
         return
     end
+    traceMeleeHit(pawn, source, target)
     local kind, element = meleeKind(source)
     if not kind or not owned(source, pawn) then return end
     -- The hooked BaseAICharacter_Mob_BP_C receiver is a combat character, not scenery.
@@ -946,7 +976,8 @@ local function start()
     end
     session = {player = id(pawn), anim = id(anim), reserve = capacity,
         shots = {}, fireParents = {}, iceParents = {}, contacts = {}, skippedSkills = {},
-        diagnostic = {total = 0, byWeapon = {}}}
+        diagnostic = {total = 0, byWeapon = {}},
+        meleeTrace = {remaining = meleeTraceLimit, deadline = os.time() + meleeTraceSeconds}}
     log("START", "reserve=" .. capacity .. " hooks=" .. #hooks
         .. " fire=" .. (fireReady and "ready" or "unavailable")
         .. " thunder=" .. (thunderReady and "ready" or "unavailable")
