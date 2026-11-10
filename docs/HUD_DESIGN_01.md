@@ -2,7 +2,7 @@
 
 **Сопоставление с играми и UX-источниками:** [HUD Benchmark Research 01](HUD_BENCHMARK_RESEARCH_01.md) (2026-11-09). Его рекомендации уточняют исходные три кристалла: требуется обозначить **силу посоха**, учесть слабую стрельбу при нуле, отдельные event cues и контекстное обучение. Исходное предложение остаётся не утверждённым макетом.
 
-**Статус:** техническая концепция и предложенный первый визуальный прототип, **не утверждённый макет**. 2026-11-09. Владение: StaffRebalance. Код HUD ещё не реализован, игровых тестов HUD не было. Рабочая ветка `dev/reserve-core-01`; стабильный `main` не менять до самостоятельной приёмки.
+**Статус:** первый UMG HUD реализован в dev и прошёл ограниченный игровой smoke-тест. Внешний вид и полная совместимость ещё не приняты. Рабочая ветка `dev/reserve-core-01`. См. результат HUD 01 ниже.
 
 ## Пользовательская цель и актуальная очередь
 
@@ -79,7 +79,7 @@
 
 ## Первый отдельный UMG HUD-кандидат — 2026-11-10
 
-**Status:** experimental source candidate, **NOT TESTED IN GAME**, no visual/layout/CombatHUD compatibility PASS. [Source](../dev/StaffRebalanceDev/Scripts/StaffReserveHud.lua) is a separate optional native-UMG module loaded via `pcall(require,"StaffReserveHud")`. It is instantiated from the verified core only after successful F3 start; if module loading/scheduler/construct/owner validation fails, combat callbacks retain their accepted behavior. Source script `main.lua` uses `setReserve` to send **only true numeric changes**, while UI reads the authoritative snapshot on late bind. The bridge is covered by the exact main mock suite (including capped/duplicate melee, weak shot at zero, unchanged full rest). No secondary reserve currency/settings/CombatHUD changes.
+**Кандидат первого сеанса.** [Отдельный модуль](../dev/StaffRebalanceDev/Scripts/StaffReserveHud.lua) загружается через `pcall(require,"StaffReserveHud")` и создаётся после успешного F3. UI читает авторитетный запас при поздней привязке и получает от `setReserve` только числовые изменения. Mock покрывает слабый выстрел на нуле, повторный melee-контакт и полное восстановление без изменения значения. Итог игрового сеанса приведён ниже.
 
 **Dev-only visual shape, not final aesthetic:** text label `STAFF` and 1–6 tiny filled/empty rectangular slots in a **new owned Canvas subtree** under native `LeftBottom_Panel` (not under status.Main_Panel, whose exact 12 children CombatHUD checks). Current dev capacity is three; six is a deliberately bounded UI-only construction cap, not a supported balancing recommendation. Provisional anchor bottom-left `x=205,y=-20`, size `138×30` logical UMG units, needs in-game placement inspection. Stock `TextBlock` / resource-free `Image` are taken from published IIP native-UMG evidence; no external fonts, assets or new cooked classes. Same fill for all four elements. Empty slots remain present and do not show a lock/fire prohibition.
 
@@ -88,3 +88,14 @@
 **Do not treat this as release UX:** contextual instruction, semantic staff/rune glyph, nicer filled/outlined crystals and short gain/spend pulse remain independent design steps after first real screenshot. No changes to final VFX coefficients or unverified Ice/Thunder.
 
 **HUD preflight fix & own-widget mock:** исходный `f196d46` создавал UI-детей в Hidden при подготовке, но не раскрывал их перед показом root (пустое дерево на экране при успешном bind). Это устранено до передачи в игру: отдельные собственные children получают `SetVisibility(3)` только после полной настройки. Добавлена независимая проверка `hud_tests.lua` через обычный Lua 5.4 для create/show, reserve 3→1, no phantom event, opacity follow, viewport swap, repeat bind и F7 detach. Реальную геометрию native HUD по-прежнему проверять в игре.
+
+## HUD 01 — первый игровой smoke-тест, 2026-11-10
+
+Кандидат `38a56f3fa84eb3aaf020506b4ec4b6bcd367c97f`, Steam build 12996889, UE4SS `83330635`, CombatHUD 0.4.1. Исходные и установленные Lua совпали побайтово. SHA-256 до и после: `main.lua` — `b8029ca725f106862cdce4a26d8e72d4fa611e97aa5a6b3bd47b661c4ad41878`, `StaffReserveHud.lua` — `9dd5539587530e4cd8cb1cbafd955f3c0cd4dd5cac4c78f337ccc10b208c28f6`. Закрытый UE4SS-журнал хранится локально, SHA-256 `dbc03db3706f7e448bc0e6347f9c17acafedaf97bd3d52dc8fb8d9c20422d86e`.
+
+- **Static/mock/CI — PASS.** [Lua 5.4 syntax и mock для точного SHA](https://github.com/NikichMods/StaffRebalance/actions/runs/42707255151).
+- **Runtime observed — PASS для проверенных переходов.** F3: один `HUD_ATTACHED` с тремя слотами, старт 3/3 (718–720). Три одиночных Astral-действия дали 3→2→1→0, по одному дебету. Слабый выстрел выполнился с `debit=0` и попаданием без изменения HUD (721–738). Четыре засчитанных контакта молотом, два из них дали 0→1 с обновлением HUD (739–759). Astral-комбо также списало по одному заряду за шаг, дополнительные болты дали `debit=0` (760–774). `REST_REQUEST` сохранил 0, подтверждённый `REST` восстановил 3/3 (778–780). F7: `HUD_DETACH failures=0`, UE4SS подтвердил снятие 13 script hooks, `STOP hooks_remaining=0` (795–809).
+- **User visual acceptance — частичная.** Владелец подтвердил появление и обновление сегментов, совместное появление и затухание с CombatHUD и исчезновение после F7. На кадрах 2560×1440 индикатор расположен ниже HP/AP без пересечения со штатными полосами, но собственные сегменты перекрывают надпись `STAFF`. Геометрия и внешний вид не приняты. За сеанс зарегистрирован один attach, на предоставленных кадрах по одному индикатору.
+- **NOT TESTED / BLOCKED.** Отдельное визуальное подтверждение скрытия в меню отсутствует. Обе native пары зарегистрированы при старте, но их физическое удаление после F7 не подтверждено журналом до выхода. Ice/Thunder и release acceptance остаются открыты.
+
+**Кинжалы после переката — незакрытое наблюдение.** Владелец сообщил о возможном попадании без заряда. Журнал фиксирует четыре кредита молотом и ноль кинжалами (`DIAG_SUMMARY`, 794), но отклонённые class/row и owner не логируются, поэтому конкретный контакт не идентифицирован. В cooked-данных `hilda_dual_dodgeatk` ссылается на timeline `dual_dodge_atk`, где используется `hilda_dual_attack`. Для Astral remap ведёт к `hilda_dual_attack_astral` с классом `hilda_dual_atk_C`. Эта пара уже разрешена. Добавлять источник по одному наблюдению нельзя. Для локализации нужен воспроизводимый контакт после переката при запасе ниже лимита и фактические class/row, owner и mob hit; обычный удар кинжалами служит контролем.
