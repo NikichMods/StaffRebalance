@@ -80,7 +80,10 @@ local e=setmetatable({}, {__index=_G})
 local first,second=4,2
 local global={IsValid=function() return true end,
     GetFullName=function() return "GameGlobal /Script/Genesis.Default__GameGlobal" end,
-    GetInUseWeaponType=function(_,_,index) return index==0 and first or second end}
+    GetInUseWeaponType=function(_,_,index)
+        if index==0 then return first end
+        return second
+    end}
 all["/Script/Genesis.Default__GameGlobal"]=global
 e.StaticFindObject=function(path) return all[path] or classes[path] end
 e.StaticConstructObject=function(c,tree,name)
@@ -143,6 +146,13 @@ first=nil;frame()
 assert(root._visible==1,"unknown slot fails closed")
 first,second=4,7;frame()
 assert(root._visible==3 and #left0._children==1,"re-equip reuses existing root")
+current=0;frame()
+for _,fill in ipairs(fills) do assert(fill._color.A<0.2) end
+current=10;frame()
+for _,fill in ipairs(fills) do assert(fill._color.A>0.9) end
+first=6;frame()
+assert(root._visible==1,"COUNT_MAX is not an equipped weapon")
+first=4;frame()
 hud0.inViewport=false
 frame()
 assert(#left0._children==0,"old owned root removed")
