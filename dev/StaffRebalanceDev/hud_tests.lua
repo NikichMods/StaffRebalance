@@ -25,8 +25,8 @@ local function make(path,classPath,outer)
             GetAddress=function() return 777 end,
             IsValid=function() return true end,
             GetClass=function() return {GetFullName=function() return "Class /Script/UMG.CanvasPanelSlot" end} end,
-            SetAutoSize=function() end,SetAnchors=function() end,SetAlignment=function() end,
-            SetPosition=function() end,SetSize=function() end}
+            SetAutoSize=function() end,SetAnchors=function(_,v) child.anchors=v end,SetAlignment=function(_,v) child.alignment=v end,
+            SetPosition=function(_,v) child.position=v end,SetSize=function(_,v) child.size=v end}
         return slot
     end
     function o:RemoveChild(child)
@@ -55,7 +55,7 @@ pawn.GetClass=function()
     return {GetFullName=function() return "BlueprintGeneratedClass /Game/hilda_BP_C" end,
         GetFName=function() return {ToString=function() return "hilda_BP_C" end} end}
 end
-local current,cap=3,3
+local current,cap=10,10
 local function ownerId() return pawn:GetFullName().."@"..tostring(pawn:GetAddress()) end
 local function createHost(suffix, foreign)
     local hud=make("World."..suffix,"/Game/HUDMainUMG_BP_C")
@@ -65,16 +65,23 @@ local function createHost(suffix, foreign)
     local ap=make(tree._path..".APBar","/Script/UMG.Image",tree)
     status._parent=left;left._children[#left._children+1]=status
     status.APBar=ap
+    local main=make(tree._path..".Main_Panel","/Script/UMG.CanvasPanel",tree)
+    hud.Main_Panel=main
     hud.WidgetTree=tree;hud.LeftBottom_Panel=left;hud.HUDStatusBarUMG_BP=status
     hud.inViewport=true
     hud.IsInViewport=function(self) return self.inViewport end
     hud.GetOwningPlayerPawn=function() return foreign or pawn end
-    return hud,left,ap
+    return hud,main,ap
 end
 local hud0,left0,ap0=createHost("HUD0")
 local hosts={hud0}
 local loops,cancelled={},false
 local e=setmetatable({}, {__index=_G})
+local first,second=4,2
+local global={IsValid=function() return true end,
+    GetFullName=function() return "GameGlobal /Script/Genesis.Default__GameGlobal" end,
+    GetInUseWeaponType=function(_,_,index) return index==0 and first or second end}
+all["/Script/Genesis.Default__GameGlobal"]=global
 e.StaticFindObject=function(path) return all[path] or classes[path] end
 e.StaticConstructObject=function(c,tree,name)
     local nameText=tostring(name)
@@ -107,16 +114,20 @@ local function frame(n)
     for _=1,(n or 1) do loops[1]() end
 end
 frame()
-assert(#left0._children==2,"status+one owned canvas")
-local root=left0._children[2]
-assert(root._visible==3 and #root._children==7)
-for _,widget in ipairs(root._children) do assert(widget._visible==3) end
-local fills={root._children[4],root._children[6],root._children[7]}
--- TextBlock + Bg1/Fill1 + Bg2/Fill2 + Bg3/Fill3.
-fills={root._children[3],root._children[5],root._children[7]}
+assert(#left0._children==1,"one owned canvas under main")
+local root=left0._children[1]
+assert(root._visible==3 and #root._children==23)
+assert(root.anchors.Minimum.X==0.5 and root.anchors.Maximum.X==0.5)
+assert(root.alignment.X==0.5 and root.position.X==0 and root.position.Y<0)
+for _,widget in ipairs(root._children) do
+    assert(widget._visible==3 and widget._class=="/Script/UMG.Image")
+    assert(widget.position.X>=0 and widget.position.X+widget.size.X<=root.size.X)
+end
+local fills={}
+for i=1,10 do fills[i]=root._children[3+i*2] end
 for _,fill in ipairs(fills) do assert(fill._color and fill._color.A>0.9) end
-current=1;view.changed(3,1);frame()
-assert(fills[1]._color.A>0.9 and fills[2]._color.A<0.2 and fills[3]._color.A<0.2)
+current=1;view.changed(10,1);frame()
+for i,fill in ipairs(fills) do assert((fill._color.A>0.9)==(i==1)) end
 view.changed(1,1);frame()
 local values=0
 for _,line in ipairs(events) do if line:match("^VALUE") then values=values+1 end end
@@ -124,14 +135,22 @@ assert(values==2,"no phantom update at cap/unchanged reserve")
 ap0:SetRenderOpacity(0.2);frame()
 assert(root:GetRenderOpacity()==0.2,"read-only AP fade follows")
 assert(ap0:GetRenderOpacity()==0.2)
+first,second=2,7;frame()
+assert(root._visible==1 and current==1,"staff absent hides without reserve reset")
+first,second=2,4;frame()
+assert(root._visible==3,"staff in second slot while melee selected")
+first=nil;frame()
+assert(root._visible==1,"unknown slot fails closed")
+first,second=4,7;frame()
+assert(root._visible==3 and #left0._children==1,"re-equip reuses existing root")
 hud0.inViewport=false
 frame()
-assert(#left0._children==1,"old owned root removed, native status preserved")
+assert(#left0._children==0,"old owned root removed")
 local hud1,left1=createHost("HUD1")
 hosts={hud1};frame(10)
-assert(#left1._children==2,"late rebinding creates one own canvas")
-frame(12);assert(#left1._children==2,"no duplicate root")
+assert(#left1._children==1,"late rebinding creates one own canvas")
+frame(12);assert(#left1._children==1,"no duplicate root")
 view.stop()
-assert(cancelled and #left1._children==1,"F7 cleanup detaches own root")
-frame();assert(#left1._children==1,"stale callback inert")
+assert(cancelled and #left1._children==0,"F7 cleanup detaches own root")
+frame();assert(#left1._children==0,"stale callback inert")
 print("PASS: native UMG reserve HUD construction, update, fade, owner rebind and cleanup")

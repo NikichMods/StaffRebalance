@@ -1,6 +1,14 @@
 -- SPDX-License-Identifier: MPL-2.0
 -- Run with Lua 5.4: lua dev/StaffRebalanceDev/tests.lua dev/StaffRebalanceDev/Scripts/main.lua
 local path = assert(arg[1])
+local sourceFile = assert(io.open(path, "r"))
+local candidateSource = sourceFile:read("*a")
+sourceFile:close()
+assert(candidateSource:find("local capacity = 10", 1, true))
+-- Retain the full capacity-three regression matrix below. Explicit Phase One
+-- cases exercise the unmodified candidate through its normal F3 entry point.
+local legacySource, replacements = candidateSource:gsub("local capacity = 10", "local capacity = 3", 1)
+assert(replacements == 1)
 local assets = "/Game/MainContent/Act/Skill_BP/PlayerSkill_BP/"
 local astral = assets .. "hilda_staff_bolt_astral.hilda_staff_bolt_astral_C"
 local fireBolt = assets .. "hilda_staff_bolt_fire.hilda_staff_bolt_fire_C"
@@ -253,7 +261,7 @@ local function setup(options)
         return blast, psc
     end
 
-    assert(loadfile(path, "t", e))()
+    assert(load(options.phaseOne and candidateSource or legacySource, "@" .. path, "t", e))()
     return {
         keys = keys,
         hooks = hooks,
@@ -329,6 +337,31 @@ local wrongPoint = parameter(object("ConduitB", 51))
 local game = parameter(object("MainGameInstance", 52))
 local function contact(test, blade, enemy)
     test.emit(hit, enemy, parameter(blade), nil, nil, parameter(0))
+end
+
+do
+    local t = setup({phaseOne=true})
+    t.keys[3]()
+    assert(t.has("START reserve=10"))
+    for i=1,10 do shot(t,"PhaseOneDrain"..i) end
+    assert(t.has("mode=strong before=1 reserve=0"))
+    assert(shot(t,"PhaseOneWeak").rate==0.4375)
+    assert(t.has("mode=weak before=0 reserve=0"))
+    local first=t.blade("PhaseOneCredit")
+    contact(t,first,target)
+    contact(t,first,target)
+    assert(t.count("MELEE")==1 and t.has("DUPLICATE reserve=1"))
+    for i=2,11 do contact(t,t.blade("PhaseOneCredit"..i),target) end
+    assert(t.has("MELEE before=9 reserve=10") and t.has("MELEE before=10 reserve=10"))
+    shot(t,"BeforeRest")
+    t.emit(conduit .. "Interact_Rest",point)
+    t.emit(recovery,game);t.emit(context,nil,point)
+    assert(t.has("REST before=9 reserve=10"))
+    t.beginStep("hilda_staff_atk2")
+    shot(t,"Combo1");shot(t,"Combo2");t.endStep()
+    assert(t.has("before=10 reserve=9") and t.has("before=9 reserve=9"))
+    t.keys[7]()
+    assert(t.has("STOP reserve=9 hooks_remaining=0") and not next(t.hooks))
 end
 
 -- HUD 01 research trace samples the callback before the melee guards.

@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: MPL-2.0
 -- Dev-only UMG overlay: no combat mutations, no CombatHUD writes, no input focus.
--- First layout is provisional; precise LeftBottom_Panel slot requires game A/B.
+-- Phase One: centered reserve, selected-slot visibility, neutral pending element evidence.
 return function(snapshot, log)
     local active,disabled,worker,tick,generation=false,false,nil,0,0
     local owned,dirty=nil,true
@@ -86,10 +86,10 @@ return function(snapshot, log)
             end
         end
         if count~=1 then return end
-        local tree,left,status=chosen.WidgetTree,chosen.LeftBottom_Panel,chosen.HUDStatusBarUMG_BP
+        local tree,left,status=chosen.WidgetTree,chosen.Main_Panel,chosen.HUDStatusBarUMG_BP
         if not valid(tree) or cls(tree)~="/Script/UMG.WidgetTree"
             or not same(tree:GetOuter(),chosen) or cls(left)~="/Script/UMG.CanvasPanel"
-            or not valid(status) or not same(status:GetParent(),left)
+            or not valid(status) or not same(status:GetParent(),chosen.LeftBottom_Panel)
             or not valid(status.APBar) then return end
         return chosen,tree,left,status
     end
@@ -103,21 +103,22 @@ return function(snapshot, log)
         owned=state -- partial construction remains eligible for own-only cleanup
         local root=create("CanvasPanel",tree,name)
         state.root=ref(root)
-        -- Provisional placement on LeftBottom, NOT a change to AP or CombatHUD.
-        slot(left,root,205,-20,138,30,0,1,0,1)
-        local label=create("TextBlock",tree,name.."_Title",state.children)
-        label:SetText(FText("STAFF"))
-        label:SetColorAndOpacity({SpecifiedColor={R=0.83,G=0.88,B=0.94,A=1},ColorUseRule=0})
-        slot(root,label,0,4,52,22,0,0,0,0)
+        -- Fixed bottom-center anchor, independent of KBM/gamepad skill widgets.
+        slot(left,root,0,-36,340,24,0.5,1,0.5,1)
+        local function box(suffix,x,y,width,height,color)
+            local w=create("Image",tree,name..suffix,state.children)
+            imageBox(w,width,height)
+            w:SetColorAndOpacity(color)
+            slot(root,w,x,y,width,height,0,0,0,0)
+            return w
+        end
+        box("_Backdrop",0,0,340,24,{R=0.015,G=0.02,B=0.03,A=0.55})
+        box("_LeftEnd",3,8,4,8,{R=0.48,G=0.52,B=0.58,A=0.65})
+        box("_RightEnd",333,8,4,8,{R=0.48,G=0.52,B=0.58,A=0.65})
         for i=1,capacity do
-            local x=55+(i-1)*26
-            local bg=create("Image",tree,name.."_Bg"..i,state.children)
-            imageBox(bg,22,22)
-            bg:SetColorAndOpacity({R=0.43,G=0.48,B=0.54,A=0.82})
-            slot(root,bg,x,4,22,22,0,0,0,0)
-            local fill=create("Image",tree,name.."_Fill"..i,state.children)
-            imageBox(fill,16,16)
-            slot(root,fill,x+3,7,16,16,0,0,0,0)
+            local x=12+(i-1)*32
+            box("_Bg"..i,x,6,28,12,{R=0.34,G=0.38,B=0.44,A=0.7})
+            local fill=box("_Fill"..i,x+1,7,26,10,{R=0.84,G=0.93,B=1,A=0.98})
             state.fills[i]=ref(fill)
         end
         -- Constructed children started Hidden so partial configuration cannot flash.
@@ -134,7 +135,7 @@ return function(snapshot, log)
     local function refresh()
         local current,capacity,owner=snapshot()
         if math.type(current)~="integer" or math.type(capacity)~="integer"
-            or capacity<1 or capacity>6 or current<0 or current>capacity
+            or capacity~=10 or current<0 or current>capacity
             or type(owner)~="string" or owner=="" then
             if owned then detach("inactive") end
             return
@@ -155,6 +156,21 @@ return function(snapshot, log)
         if not state then return end
         local root,status=resolve(state.root),resolve(state.status)
         assert(root and status and valid(status.APBar),"hud_widget_lost")
+        local h=resolve(state.hud)
+        local pawn=h and h:GetOwningPlayerPawn()
+        local equipped=false
+        local readOk,first,second=pcall(function()
+            local global=StaticFindObject("/Script/Genesis.Default__GameGlobal")
+            assert(valid(global) and global:GetFullName()=="GameGlobal /Script/Genesis.Default__GameGlobal")
+            return global:GetInUseWeaponType(pawn,0),global:GetInUseWeaponType(pawn,1)
+        end)
+        local function weaponType(v)
+            return math.type(v)=="integer" and ((v>=0 and v<=5) or v==7)
+        end
+        if readOk and weaponType(first) and weaponType(second) then
+            equipped=first==4 or second==4
+        end
+        root:SetVisibility(equipped and 3 or 1)
         local opacity=status.APBar:GetRenderOpacity() -- read-only CombatHUD fade reference
         assert(type(opacity)=="number" and opacity>=0 and opacity<=1,"invalid_ap_opacity")
         if math.abs(root:GetRenderOpacity()-opacity)>0.001 then root:SetRenderOpacity(opacity) end
