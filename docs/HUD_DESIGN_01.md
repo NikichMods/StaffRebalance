@@ -197,3 +197,14 @@
 **Следующая игровая граница.** F3 с посохом: открыть/закрыть inventory, map и pause/system menu, убедиться, что шкала отсутствует в меню и возвращается в игровой сцене при прежнем запасе и CombatHUD fade. Затем F7, контрольное действие и выход. Полный 10→0/melee/rest заново не требуется для этого presentation-исправления. Runtime menu fix NOT TESTED до повторного наблюдения владельца.
 
 **Menu fix установлен — READY FOR GAME TEST.** Исполняемый SHA 041b705daa35cf1689ab3dd3f796afaf608e0219, [CI 44003912382 PASS](https://github.com/NikichMods/StaffRebalance/actions/runs/44003912382) для Lua syntax/core/HUD mock. Установка при закрытой игре, прежняя версия сохранена локально вне Mods, оба файла побайтово совпали с Git. SHA-256 HUD — 72dc80e8e5d452c06180b1651a151440f6f1e80fd241ae8812a3efb44a9e242c, main.lua прежний. Protected file hashes совпали. Игровой результат menu fix ещё NOT TESTED.
+
+### Menu fix — игровой результат, 2026-11-17
+
+**Кандидат `041b705daa35cf1689ab3dd3f796afaf608e0219`.** Установленные Lua SHA-256 совпали с манифестом до и после. Закрытый журнал сохранён локально, SHA-256 `83c5145d00413bd706905cc40006eea57fbd2c8c0925ec379853a2d96aaf0a96`.
+
+- **Static/mock/CI — PASS.** [CI точного кандидата](https://github.com/NikichMods/StaffRebalance/actions/runs/44003912382).
+- **Runtime observed — PASS для visibility и script cleanup.** Один HUD_ATTACHED с десятью слотами, запас 10/10 (709–712). Три цикла shown=false→true без повторного attach (713–718). После возвращения выстрел дал 10→9 и соответствующий HUD_VALUE (719–720). F7 дал HUD_DETACH reason=stop failures=0, UE4SS подтвердил снятие всех 13 script hooks, STOP reserve=9 hooks_remaining=0 (722–736). Ошибок HUD в этом сеансе нет.
+- **User visual acceptance — PASS для меню.** Владелец подтвердил, что шкала исчезает при входе в меню и корректно возвращается. Лог поддерживает три перехода, но не называет конкретные экраны меню.
+- **NOT VERIFIED.** Строк фактического снятия двух native pre/post пар после F7 в этом журнале нет, через 2.5 секунды завершился event loop (737). Внутренний hooks_remaining=0 подтверждает выполнение штатной cleanup-процедуры, но не физическое завершение отложенного снятия native hooks. Это ограничение доказательства данного прогона.
+
+Menu-дефект закрыт в проверенном сценарии. Цвет по Enchantite остаётся BLOCKED, полная геометрическая приёмка/все устройства и отдельное live-доказательство снятия staff из обоих selected slots этим menu-тестом не устанавливаются. Ice/Thunder gameplay deferred, release acceptance открыта.

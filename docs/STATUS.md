@@ -87,4 +87,4 @@
 
 **Phase One — первый запуск без шкалы.** Найден дефект маршрута к root: исправлено чтение на WidgetTree.RootWidget по принятому R-015. Mock теперь отклоняет прямой Main_Panel alias. Runtime исправления NOT TESTED. [Диагноз](HUD_DESIGN_01.md#phase-one--исправление-корневой-привязки-после-первого-запуска).
 
-**Phase One smoke, dceb1fc.** Расход 10→0, weak, melee 0→10/cap и Conduit 8→10 подтверждены журналом; пользователь подтвердил появление и fade. Меню FAIL: центральный root выше native menu-owner. Подготовлено read-only следование видимости штатной HUD-ветви и input mode, runtime fix NOT TESTED. [Отчёт](HUD_DESIGN_01.md#phase-one--игровой-прогон-и-меню-2026-11-17).
+**Phase One smoke, dceb1fc.** Расход 10→0, weak, melee 0→10/cap и Conduit 8→10 подтверждены журналом; пользователь подтвердил появление и fade. Меню FAIL: центральный root выше native menu-owner. Read-only следование видимости штатной HUD-ветви и input mode в 041b705 прошло menu-тест: три цикла hide/show, визуальный PASS владельца, F7 detach и 13 script hooks PASS. Физическое снятие native пар в этом логе NOT VERIFIED. [Отчёт](HUD_DESIGN_01.md#phase-one--игровой-прогон-и-меню-2026-11-17).
