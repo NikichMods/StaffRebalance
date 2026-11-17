@@ -86,3 +86,5 @@
 **HUD Phase One, 2026-11-17.** Подготовлен dev-кандидат с gameplay capacity=10 и десятью тонкими центральными ячейками. Видимость по двум selected weapon slots, цвет нейтральный до доказательства текущего Enchantite seam. Layout/menu/equipment runtime NOT TESTED. [Контракт и отчёт](HUD_DESIGN_01.md#hud-phase-one--кандидат-реализации-2026-11-17).
 
 **Phase One — первый запуск без шкалы.** Найден дефект маршрута к root: исправлено чтение на WidgetTree.RootWidget по принятому R-015. Mock теперь отклоняет прямой Main_Panel alias. Runtime исправления NOT TESTED. [Диагноз](HUD_DESIGN_01.md#phase-one--исправление-корневой-привязки-после-первого-запуска).
+
+**Phase One smoke, dceb1fc.** Расход 10→0, weak, melee 0→10/cap и Conduit 8→10 подтверждены журналом; пользователь подтвердил появление и fade. Меню FAIL: центральный root выше native menu-owner. Подготовлено read-only следование видимости штатной HUD-ветви и input mode, runtime fix NOT TESTED. [Отчёт](HUD_DESIGN_01.md#phase-one--игровой-прогон-и-меню-2026-11-17).

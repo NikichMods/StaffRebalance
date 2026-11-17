@@ -12,6 +12,7 @@ local function make(path,classPath,outer)
     function o:GetOuter() return self._outer end
     function o:GetParent() return self._parent end
     function o:GetRenderOpacity() return self._opacity end
+    function o:GetVisibility() return self._visible end
     function o:SetRenderOpacity(v) self._opacity=v end
     function o:SetVisibility(v) self._visible=v end
     local c={GetFullName=function() return "Class "..classPath end,
@@ -56,6 +57,7 @@ pawn.GetClass=function()
         GetFName=function() return {ToString=function() return "hilda_BP_C" end} end}
 end
 local current,cap=10,10
+local inputMode,menuVisibility=0,3
 local function ownerId() return pawn:GetFullName().."@"..tostring(pawn:GetAddress()) end
 local function createHost(suffix, foreign)
     local hud=make("World."..suffix,"/Game/HUDMainUMG_BP_C")
@@ -66,6 +68,9 @@ local function createHost(suffix, foreign)
     status._parent=left;left._children[#left._children+1]=status
     status.APBar=ap
     local main=make(tree._path..".Main_Panel","/Script/UMG.CanvasPanel",tree)
+    local menuOwner=make(tree._path..".HUD_Panel","/Script/UMG.CanvasPanel",tree)
+    menuOwner.GetVisibility=function() return menuVisibility end
+    left._parent=menuOwner
     tree.RootWidget=main
     setmetatable(hud,{__index=function(_,key)
         assert(key~="Main_Panel","Main_Panel has no direct HUD alias")
@@ -83,6 +88,10 @@ local e=setmetatable({}, {__index=_G})
 local first,second=4,2
 local global={IsValid=function() return true end,
     GetFullName=function() return "GameGlobal /Script/Genesis.Default__GameGlobal" end,
+    GetInputMode=function(_,ui,ignore)
+        assert(ui==true and ignore==false)
+        return inputMode
+    end,
     GetInUseWeaponType=function(_,_,index)
         if index==0 then return first end
         return second
@@ -141,6 +150,18 @@ assert(values==2,"no phantom update at cap/unchanged reserve")
 ap0:SetRenderOpacity(0.2);frame()
 assert(root:GetRenderOpacity()==0.2,"read-only AP fade follows")
 assert(ap0:GetRenderOpacity()==0.2)
+-- Main_Panel remains visible while the native HUD branch is hidden by menus.
+for _,visibility in ipairs({1,2}) do
+    menuVisibility=visibility;frame()
+    assert(root._visible==1 and current==1 and #left0._children==1)
+end
+menuVisibility=3;inputMode=1;frame()
+assert(root._visible==1,"UI input mode hides even before native owner hides")
+inputMode=0;frame()
+assert(root._visible==3 and root:GetRenderOpacity()==0.2,"scene restores own HUD at CombatHUD opacity")
+menuVisibility=nil;frame()
+assert(root._visible==1,"unknown menu owner visibility fails closed")
+menuVisibility=3;frame()
 first,second=2,7;frame()
 assert(root._visible==1 and current==1,"staff absent hides without reserve reset")
 first,second=2,4;frame()

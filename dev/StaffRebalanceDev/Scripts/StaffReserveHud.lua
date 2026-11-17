@@ -163,10 +163,16 @@ return function(snapshot, log)
         local h=resolve(state.hud)
         local pawn=h and h:GetOwningPlayerPawn()
         local equipped=false
-        local readOk,first,second=pcall(function()
+        local readOk,first,second,scene=pcall(function()
             local global=StaticFindObject("/Script/Genesis.Default__GameGlobal")
             assert(valid(global) and global:GetFullName()=="GameGlobal /Script/Genesis.Default__GameGlobal")
-            return global:GetInUseWeaponType(pawn,0),global:GetInUseWeaponType(pawn,1)
+            local left=h.LeftBottom_Panel
+            local menuOwner=valid(left) and left:GetParent()
+            assert(valid(menuOwner),"native_menu_owner_unavailable")
+            local visibility=menuOwner:GetVisibility()
+            local sceneVisible=global:GetInputMode(true,false)==0
+                and (visibility==0 or visibility==3 or visibility==4)
+            return global:GetInUseWeaponType(pawn,0),global:GetInUseWeaponType(pawn,1),sceneVisible
         end)
         local function weaponType(v)
             return math.type(v)=="integer" and ((v>=0 and v<=5) or v==7)
@@ -174,7 +180,12 @@ return function(snapshot, log)
         if readOk and weaponType(first) and weaponType(second) then
             equipped=first==4 or second==4
         end
-        root:SetVisibility(equipped and 3 or 1)
+        local shown=equipped and scene==true
+        root:SetVisibility(shown and 3 or 1)
+        if shown~=state.shown then
+            state.shown=shown
+            log("VISIBILITY","shown="..tostring(shown))
+        end
         local opacity=status.APBar:GetRenderOpacity() -- read-only CombatHUD fade reference
         assert(type(opacity)=="number" and opacity>=0 and opacity<=1,"invalid_ap_opacity")
         if math.abs(root:GetRenderOpacity()-opacity)>0.001 then root:SetRenderOpacity(opacity) end
