@@ -86,9 +86,13 @@ return function(snapshot, log)
             end
         end
         if count~=1 then return end
-        local tree,left,status=chosen.WidgetTree,chosen.Main_Panel,chosen.HUDStatusBarUMG_BP
+        local tree=chosen.WidgetTree
         if not valid(tree) or cls(tree)~="/Script/UMG.WidgetTree"
-            or not same(tree:GetOuter(),chosen) or cls(left)~="/Script/UMG.CanvasPanel"
+            or not same(tree:GetOuter(),chosen) then return end
+        local left,status=tree.RootWidget,chosen.HUDStatusBarUMG_BP
+        if cls(left)~="/Script/UMG.CanvasPanel"
+            or fullPath(left)~=fullPath(tree)..".Main_Panel"
+            or not same(left:GetOuter(),tree) or valid(left:GetParent())
             or not valid(status) or not same(status:GetParent(),chosen.LeftBottom_Panel)
             or not valid(status.APBar) then return end
         return chosen,tree,left,status

@@ -66,7 +66,10 @@ local function createHost(suffix, foreign)
     status._parent=left;left._children[#left._children+1]=status
     status.APBar=ap
     local main=make(tree._path..".Main_Panel","/Script/UMG.CanvasPanel",tree)
-    hud.Main_Panel=main
+    tree.RootWidget=main
+    setmetatable(hud,{__index=function(_,key)
+        assert(key~="Main_Panel","Main_Panel has no direct HUD alias")
+    end})
     hud.WidgetTree=tree;hud.LeftBottom_Panel=left;hud.HUDStatusBarUMG_BP=status
     hud.inViewport=true
     hud.IsInViewport=function(self) return self.inViewport end
