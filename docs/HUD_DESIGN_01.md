@@ -227,3 +227,30 @@ Menu-дефект закрыт в проверенном сценарии. Цв�
 4. Только после достаточного доказательства подключить `element → {R,G,B,A}` как **собственные константы UI**; применять цвет к заполненным десяти слотам при смене элемента и при reserve change. Не менять `session.reserve`, gameplay cost, штатные эффекты или CombatHUD. Mock/CI и короткий Astral/Fire live smoke с точным SHA обязательны. До этого — прежняя нейтральная заливка.
 
 **Статус:** design/gate READY; выбранный data seam **candidate, runtime NOT VERIFIED**, цветовые четыре пресета **NOT IMPLEMENTED**. Остановиться на конкретном evidence gap, если он выявится; не угадывать по последнему projectile или картинке меню. 
+
+#### Magic_Elemental — статическая проверка и evidence gap
+
+**Вывод:** цветовой consumer остаётся BLOCKED. READY только для read-only диагностического кандидата в существующем HUD worker. Поле локального pawn читается через GetPropertyValue, без записи native данных, смены reserve и подключения к fill-color. Начальное значение и изменения пишутся как HUD_ELEMENT_OBS, максимум 16 записей на привязку HUD. Каждая запись содержит ограниченное значение, Lua-тип, поколение HUD и типы selected/in-hand weapon. Это диагностический sample, не второе mutable хранилище игровой стихии. Стабильное значение не порождает повторных строк; ошибка чтения остаётся диагностической и сохраняет работу нейтрального HUD. Новых loops/hooks/объектных scans нет; worker прекращается штатным F7.
+
+| Вопрос | Установлено статически | Что ещё нужно |
+| --- | --- | --- |
+| Тип и значения | BasePlayerCharacter_BP.Magic_Elemental — StrProperty/FString, ElementSize=16. Потребитель hilda_staff_arrow сравнивает lowercase astral/fire/ice/thunder | Подтвердить форму значения UE4SS при чтении у живого pawn. FString не является закрытым enum, прочие строки возможны |
+| Writer | В ExecuteUbergraph действие set_elemental (offsets 677/719) ведёт к записи из actionParameter (794), затем к ExecuteWeaponAction(change_elemental, Magic_Elemental) (110) | Установить live связь с выбором Enchantite, чей native caller в retained-входах не локализован |
+| Изменение без выстрела | В показанной ветви writer не зависит от projectile callback | Подтвердить доставку set_elemental непосредственно при применении Enchantite |
+| Melee в руке | Поле принадлежит персонажу, GetOwnerMagicElemental читает его у владельца | Это не доказывает сохранение staff-элемента при смене оружия. Нужен контролируемый Astral→Fire при melee in-hand |
+| Загрузка | Retained export не даёт достаточной цепочки восстановления выбранного Enchantite в поле | Initial sample после обычной загрузки с заранее выбранным Fire, до выстрела |
+
+Дополнительно GetParameter_String с key=MagicElemental возвращает то же поле. Это альтернативный accessor, не отдельное доказательство своевременной инициализации. Из наличия set_elemental не следует происхождение actionParameter от текущего staff-Enchantite. Четыре цветовых пресета пока не подключены, неизвестные значения сохраняют прежнюю нейтральную заливку.
+
+**Идентичность retained evidence, SHA-256.** Исходные игровые JSON/bytecode остаются локальными.
+
+| Вход | SHA-256 |
+| --- | --- |
+| BasePlayerCharacter_BP.json | 57201275a283519c94daf668f57e84cf731f7939efa19f0f450df11de23fefdd |
+| BasePlayerCharacter_BP ExecuteUbergraph | e5a877e6e3f8417cc3c751a31516910d73a8836492a81dccacc08e4d7e49da50 |
+| BasePlayerCharacter_BP GetParameter_String | f58f335a1ab1cc58b8d6b9277cf5c5ef139558b80d287a1f0e8f9b39f63028bd |
+| hilda_staff_arrow ExecuteUbergraph | 7770f3c94412f6ceceabb5cb660907240b6aa9b315a0d127519fed30c9a0d65d |
+
+**Узкий игровой сценарий диагностики.** Загрузить обычное сохранение, выбрать Astral, оставить посох в наборе и melee в руке. F3, выдержать 2 секунды до любых выстрелов. Переключить на Fire, подождать 2 секунды с melee в руке, затем достать посох без выстрела, вернуть melee. Переключить обратно на Astral и снова Fire, выдерживая паузы. Отметить, в каком порядке фактически выбирались стихии. F7, контрольный взмах, выход. Достаточно доступных Astral/Fire, Ice/Thunder не нужны. Для проверки загрузки отдельно запустить/загрузить обычное сохранение, в котором игра штатно сохранила Fire, и нажать F3 до первого выстрела. Искусственно изменять сохранение не требуется. Закрытый журнал первого сеанса сохранить до второго запуска.
+
+**Проверки кандидата.** Существующие Lua core/HUD suites плюс probe mock: initial sample, отсутствие per-tick spam, изменение значения, сохранение цвета, ошибка чтения и неподдержанный тип, лимит записей и прежняя menu/equipment/rebind/F7 матрица. Runtime probe и цветовые semantics пока NOT VERIFIED. После получения этих наблюдений достаточно решить gate для подключения пресетов, без нового общего исследования боя.

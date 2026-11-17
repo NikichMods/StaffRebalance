@@ -74,6 +74,38 @@ return function(snapshot, log)
         b.TintColor={SpecifiedColor={R=1,G=1,B=1,A=1},ColorUseRule=0}
         w:SetBrush(b)
     end
+    -- Research-only: observe the candidate field without driving presentation.
+    -- This shares the existing worker and never writes native state.
+    local function observeElement(state,pawn)
+        local probe=state.elementProbe
+        if not probe then
+            probe={remaining=16}
+            state.elementProbe=probe
+        end
+        if probe.remaining==0 then return end
+        local rawType="unavailable"
+        local ok,value=pcall(function()
+            local raw=pawn:GetPropertyValue("Magic_Elemental")
+            rawType=type(raw)
+            if rawType=="string" then return raw end
+            if rawType=="userdata" then return raw:ToString() end
+            return "<unsupported_type>"
+        end)
+        if not ok or type(value)~="string" then value="<read_failed>" end
+        value=value:sub(1,32)
+        local key=rawType..":"..value
+        if key==probe.last then return end
+        probe.last=key
+        probe.remaining=probe.remaining-1
+        local contextOk,hand,first,second=pcall(function()
+            local global=StaticFindObject("/Script/Genesis.Default__GameGlobal")
+            return global:GetInHandWeaponType(pawn),
+                global:GetInUseWeaponType(pawn,0),global:GetInUseWeaponType(pawn,1)
+        end)
+        log("ELEMENT_OBS",("generation=%d value=%q lua_type=%s hand=%s slots=%s,%s remaining=%d")
+            :format(generation,value,rawType,contextOk and tostring(hand) or "?",
+                contextOk and tostring(first) or "?",contextOk and tostring(second) or "?",probe.remaining))
+    end
     local function hudFor(owner)
         local chosen,count=nil,0
         for _,w in ipairs(FindAllOf("HUDMainUMG_BP_C") or {}) do
@@ -162,6 +194,7 @@ return function(snapshot, log)
         assert(root and status and valid(status.APBar),"hud_widget_lost")
         local h=resolve(state.hud)
         local pawn=h and h:GetOwningPlayerPawn()
+        observeElement(state,pawn)
         local equipped=false
         local readOk,first,second,scene=pcall(function()
             local global=StaticFindObject("/Script/Genesis.Default__GameGlobal")

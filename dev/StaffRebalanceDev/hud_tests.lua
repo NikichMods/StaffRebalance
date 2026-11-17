@@ -58,6 +58,13 @@ pawn.GetClass=function()
 end
 local current,cap=10,10
 local inputMode,menuVisibility=0,3
+local element,elementError="astral",false
+local hand=1
+pawn.GetPropertyValue=function(_,key)
+    assert(key=="Magic_Elemental")
+    if elementError then error("candidate field unavailable") end
+    return element
+end
 local function ownerId() return pawn:GetFullName().."@"..tostring(pawn:GetAddress()) end
 local function createHost(suffix, foreign)
     local hud=make("World."..suffix,"/Game/HUDMainUMG_BP_C")
@@ -88,6 +95,7 @@ local e=setmetatable({}, {__index=_G})
 local first,second=4,2
 local global={IsValid=function() return true end,
     GetFullName=function() return "GameGlobal /Script/Genesis.Default__GameGlobal" end,
+    GetInHandWeaponType=function() return hand end,
     GetInputMode=function(_,ui,ignore)
         assert(ui==true and ignore==false)
         return inputMode
@@ -128,7 +136,14 @@ assert(view.start())
 local function frame(n)
     for _=1,(n or 1) do loops[1]() end
 end
+local function observations()
+    local n=0
+    for _,line in ipairs(events) do if line:match("^ELEMENT_OBS ") then n=n+1 end end
+    return n
+end
 frame()
+assert(observations()==1 and events[2]:find('value="astral"',1,true))
+frame(3);assert(observations()==1,"no unchanged per-tick element logs")
 assert(#left0._children==1,"one owned canvas under main")
 local root=left0._children[1]
 assert(root._visible==3 and #root._children==23)
@@ -141,6 +156,15 @@ end
 local fills={}
 for i=1,10 do fills[i]=root._children[3+i*2] end
 for _,fill in ipairs(fills) do assert(fill._color and fill._color.A>0.9) end
+local neutral=fills[1]._color
+element="fire";frame()
+assert(observations()==2 and fills[1]._color==neutral,"probe cannot recolor HUD")
+elementError=true;frame(3)
+assert(observations()==3 and root._visible==3,"read failure stays diagnostic only")
+elementError=false;element=nil;frame(3)
+assert(observations()==4,"unsupported type logs once")
+element="fire";frame()
+assert(observations()==5)
 current=1;view.changed(10,1);frame()
 for i,fill in ipairs(fills) do assert((fill._color.A>0.9)==(i==1)) end
 view.changed(1,1);frame()
@@ -177,6 +201,8 @@ for _,fill in ipairs(fills) do assert(fill._color.A>0.9) end
 first=6;frame()
 assert(root._visible==1,"COUNT_MAX is not an equipped weapon")
 first=4;frame()
+for i=1,20 do element="unknown_"..i;frame() end
+assert(observations()==16,"bounded element change diagnostics")
 hud0.inViewport=false
 frame()
 assert(#left0._children==0,"old owned root removed")
