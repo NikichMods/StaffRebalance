@@ -298,3 +298,14 @@ Mock проверяет все четыре exact preset, смену при то
 **Игровой smoke.** После обычной загрузки F3, до выстрела проверить цвет текущего Astral/Fire. Переключить Astral↔Fire без стрельбы, включая melee в руке при staff в наборе. Одним выстрелом освободить ячейку и убедиться, что пустая остаётся серой; поменять элемент при частичном запасе. Проверить вход/выход из меню и fade, F7, контрольный взмах, выход. Ice/Thunder специально открывать не требуется.
 
 **Установлено — READY FOR COLOR GAME TEST.** Исполняемый SHA 16f16c9db2b0c1ea7040904b1f8dd82e830fec7b, [Lua syntax/core/HUD CI 44419607973 PASS](https://github.com/NikichMods/StaffRebalance/actions/runs/44419607973). Игра закрыта, предыдущая установка сохранена вне Mods. Оба файла побайтово совпали с Git. SHA-256 HUD b336c5e567197904dfa3dad8af76cf4c92820bbeba6067c9d48d76a8d5b90260, main.lua прежний. Protected CombatHUD/mods.txt/enable marker хеши совпали. Runtime colors NOT TESTED.
+
+#### Цветовые пресеты — игровой результат Astral/Fire, 2026-11-19
+
+Кандидат `16f16c9db2b0c1ea7040904b1f8dd82e830fec7b`, установленные SHA обоих Lua совпали с installation manifest. Закрытый UE4SS-журнал сохранён локально, SHA-256 `94183721faab5edfd4809698f0e6d896bae428ec4174a2bac10ab14d5222516b`.
+
+- **Static/mock/CI — PASS** для точного кандидата, [CI 44419607973](https://github.com/NikichMods/StaffRebalance/actions/runs/44419607973).
+- **Runtime observed — PASS в проверенном сценарии.** Один HUD_ATTACHED с десятью слотами (832). Initial astral на 10/10 (833–835), fire без выстрела при том же 10/10 (839–840), затем Fire bolt расходует один заряд до 9/10 (844–845). Возврат к astral обновляет presentation при прежнем 9/10 (854–855). Один цикл hidden→shown (849–850), без повторного attach. F7: HUD_DETACH failures=0, 13 script hooks сняты, STOP hooks_remaining=0 (858–872). UE4SS подтвердил снятие обеих native pre/post пар (874–877). HUD/core ошибок этого мода не зарегистрировано.
+- **User visual acceptance — PASS для Astral/Fire.** Владелец подтвердил смену цветов без выстрела, серую пустую ячейку, работу меню и fade. Лог подтверждает смену поля и обновление значений, визуальное различение цветов и пустой ячейки подтверждено владельцем.
+- **NOT TESTED.** Ice/Thunder цветовые значения покрыты mock, соответствующее live-переключение и gameplay остаются deferred до доступности. Полный release gate и отдельные отложенные gameplay границы этим smoke не закрываются.
+
+Цветовой consumer Astral/Fire принят в данном dev-сценарии. Уровни сохранены раздельно: host field до выстрела/после загрузки подтверждён прежними прогонами, fixed colors/menu/empty fill — текущим smoke и визуальной приёмкой.
