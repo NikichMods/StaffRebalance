@@ -156,11 +156,14 @@ end
 local fills={}
 for i=1,10 do fills[i]=root._children[3+i*2] end
 for _,fill in ipairs(fills) do assert(fill._color and fill._color.A>0.9) end
-local neutral=fills[1]._color
+local astralColor=fills[1]._color
 element="fire";frame()
-assert(observations()==2 and fills[1]._color==neutral,"probe cannot recolor HUD")
+assert(observations()==2 and fills[1]._color.R==1 and fills[1]._color.G==0.32)
+assert(fills[1]._color~=astralColor and current==10,"element change updates without reserve change")
 elementError=true;frame(3)
 assert(observations()==3 and root._visible==3,"read failure stays diagnostic only")
+local neutral=fills[1]._color
+assert(neutral.R==0.84 and neutral.G==0.93)
 elementError=false;element=nil;frame(3)
 assert(observations()==4,"unsupported type logs once")
 element="fire";frame()
@@ -170,7 +173,19 @@ for i,fill in ipairs(fills) do assert((fill._color.A>0.9)==(i==1)) end
 view.changed(1,1);frame()
 local values=0
 for _,line in ipairs(events) do if line:match("^VALUE") then values=values+1 end end
-assert(values==2,"no phantom update at cap/unchanged reserve")
+assert(values==5,"only reserve or resolved color changes redraw")
+local emptyColor=fills[2]._color
+for _,case in ipairs({
+    {"astral",0.60,0.44,1},{"fire",1,0.32,0.08},
+    {"ice",0.28,0.78,1},{"thunder",1,0.83,0.20},
+}) do
+    element=case[1];frame()
+    local c=fills[1]._color
+    assert(c.R==case[2] and c.G==case[3] and c.B==case[4] and c.A==0.98)
+    assert(fills[2]._color.R==emptyColor.R and fills[2]._color.A==emptyColor.A)
+end
+element="Fire";frame()
+assert(fills[1]._color==neutral,"unknown case must not guess an element")
 ap0:SetRenderOpacity(0.2);frame()
 assert(root:GetRenderOpacity()==0.2,"read-only AP fade follows")
 assert(ap0:GetRenderOpacity()==0.2)
@@ -203,6 +218,8 @@ assert(root._visible==1,"COUNT_MAX is not an equipped weapon")
 first=4;frame()
 for i=1,20 do element="unknown_"..i;frame() end
 assert(observations()==16,"bounded element change diagnostics")
+element="fire";frame()
+assert(observations()==16 and fills[1]._color.G==0.32,"color still updates after trace limit")
 hud0.inViewport=false
 frame()
 assert(#left0._children==0,"old owned root removed")

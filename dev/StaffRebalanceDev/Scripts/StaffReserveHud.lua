@@ -2,6 +2,13 @@
 -- Dev-only UMG overlay: no combat mutations, no CombatHUD writes, no input focus.
 -- Phase One: centered reserve, selected-slot visibility, neutral pending element evidence.
 return function(snapshot, log)
+    local neutral={R=0.84,G=0.93,B=1,A=0.98}
+    local presets={
+        astral={R=0.60,G=0.44,B=1,A=0.98},
+        fire={R=1,G=0.32,B=0.08,A=0.98},
+        ice={R=0.28,G=0.78,B=1,A=0.98},
+        thunder={R=1,G=0.83,B=0.20,A=0.98},
+    }
     local active,disabled,worker,tick,generation=false,false,nil,0,0
     local owned,dirty=nil,true
     local function valid(v) return v~=nil and v:IsValid() end
@@ -74,15 +81,13 @@ return function(snapshot, log)
         b.TintColor={SpecifiedColor={R=1,G=1,B=1,A=1},ColorUseRule=0}
         w:SetBrush(b)
     end
-    -- Research-only: observe the candidate field without driving presentation.
-    -- This shares the existing worker and never writes native state.
-    local function observeElement(state,pawn)
+    -- Read current host state each refresh; diagnostic limits never freeze color.
+    local function elementColor(state,pawn)
         local probe=state.elementProbe
         if not probe then
             probe={remaining=16}
             state.elementProbe=probe
         end
-        if probe.remaining==0 then return end
         local rawType="unavailable"
         local ok,value=pcall(function()
             local raw=pawn:GetPropertyValue("Magic_Elemental")
@@ -92,9 +97,11 @@ return function(snapshot, log)
             return "<unsupported_type>"
         end)
         if not ok or type(value)~="string" then value="<read_failed>" end
+        local color=presets[value] or neutral
+        if probe.remaining==0 then return color end
         value=value:sub(1,32)
         local key=rawType..":"..value
-        if key==probe.last then return end
+        if key==probe.last then return color end
         probe.last=key
         probe.remaining=probe.remaining-1
         local contextOk,hand,first,second=pcall(function()
@@ -105,6 +112,7 @@ return function(snapshot, log)
         log("ELEMENT_OBS",("generation=%d value=%q lua_type=%s hand=%s slots=%s,%s remaining=%d")
             :format(generation,value,rawType,contextOk and tostring(hand) or "?",
                 contextOk and tostring(first) or "?",contextOk and tostring(second) or "?",probe.remaining))
+        return color
     end
     local function hudFor(owner)
         local chosen,count=nil,0
@@ -194,7 +202,7 @@ return function(snapshot, log)
         assert(root and status and valid(status.APBar),"hud_widget_lost")
         local h=resolve(state.hud)
         local pawn=h and h:GetOwningPlayerPawn()
-        observeElement(state,pawn)
+        local color=elementColor(state,pawn)
         local equipped=false
         local readOk,first,second,scene=pcall(function()
             local global=StaticFindObject("/Script/Genesis.Default__GameGlobal")
@@ -222,14 +230,15 @@ return function(snapshot, log)
         local opacity=status.APBar:GetRenderOpacity() -- read-only CombatHUD fade reference
         assert(type(opacity)=="number" and opacity>=0 and opacity<=1,"invalid_ap_opacity")
         if math.abs(root:GetRenderOpacity()-opacity)>0.001 then root:SetRenderOpacity(opacity) end
-        if dirty or current~=state.rendered then
+        if dirty or current~=state.rendered or color~=state.color then
             for i=1,capacity do
                 local fill=resolve(state.fills[i])
                 assert(fill,"own_fill_lost")
-                if i<=current then fill:SetColorAndOpacity({R=0.84,G=0.93,B=1,A=0.98})
+                if i<=current then fill:SetColorAndOpacity(color)
                 else fill:SetColorAndOpacity({R=0.54,G=0.62,B=0.70,A=0.10}) end
             end
             state.rendered=current
+            state.color=color
             dirty=false
             log("VALUE","reserve="..current.."/"..capacity)
         end
