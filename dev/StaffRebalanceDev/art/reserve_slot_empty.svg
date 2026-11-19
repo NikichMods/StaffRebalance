@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="56" height="24" viewBox="0 0 28 12">
+  <!-- SPDX-License-Identifier: MPL-2.0 -->
+  <defs>
+    <linearGradient id="rim" x2="0" y2="1">
+      <stop stop-color="#aaa69a" stop-opacity=".71"/>
+      <stop offset=".40" stop-color="#817a70" stop-opacity=".76"/>
+      <stop offset=".78" stop-color="#514f4d" stop-opacity=".9"/>
+      <stop offset="1" stop-color="#8a857d" stop-opacity=".82"/>
+    </linearGradient>
+    <linearGradient id="well" x2="0" y2="1">
+      <stop stop-color="#222022" stop-opacity=".97"/>
+      <stop offset=".45" stop-color="#454145" stop-opacity=".94"/>
+      <stop offset="1" stop-color="#353336" stop-opacity=".94"/>
+    </linearGradient>
+  </defs>
+  <path d="M2.5 1H25.5L27.7 3.1V8.9L25.5 11H2.5L.3 8.9V3.1Z" fill="url(#rim)"/>
+  <path d="M2.9 2H25.1L26.6 3.5V8.5L25.1 10H2.9L1.4 8.5V3.5Z" fill="url(#well)"/>
+  <path d="M3.7 8.7H24.4" stroke="#9c958c" stroke-opacity=".13" stroke-width=".5"/>
+</svg>

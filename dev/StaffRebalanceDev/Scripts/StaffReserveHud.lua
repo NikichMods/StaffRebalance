@@ -1,6 +1,16 @@
 -- SPDX-License-Identifier: MPL-2.0
 -- Dev-only UMG overlay: no combat mutations, no CombatHUD writes, no input focus.
--- Phase One: centered reserve, selected-slot visibility, neutral pending element evidence.
+local source=debug.getinfo(1,"S").source
+local artDirectory=source:match("^@(.+[/\\])StaffReserveHud%.lua$")
+local importerPath="/Script/Engine.KismetRenderingLibrary:ImportFileAsTexture2D"
+local backdrop={"reserve_backdrop",340,24}
+local capLeft={"reserve_cap_left",12,10}
+local capRight={"reserve_cap_right",12,10}
+local empty={"reserve_slot_empty",28,12}
+local charged={"reserve_slot_fill",32,16}
+local white={R=1,G=1,B=1,A=1}
+local transparent={R=1,G=1,B=1,A=0}
+
 return function(snapshot, log)
     local neutral={R=0.84,G=0.93,B=1,A=0.98}
     local presets={
@@ -30,13 +40,22 @@ return function(snapshot, log)
         if not state then return end
         local failures=0
         for i=#state.children,1,-1 do
-            local w,parent=resolve(state.children[i]),resolve(state.root)
-            if w and parent and same(w:GetParent(),parent) then
+            local w,parent,tree=resolve(state.children[i]),resolve(state.root),resolve(state.tree)
+            if w and same(w:GetOuter(),tree) then
                 local ok=pcall(function()
                     w:SetVisibility(1)
-                    assert(parent:RemoveChild(w)==true and not valid(w:GetParent()))
+                    if same(w:GetParent(),parent) then
+                        assert(parent:RemoveChild(w)==true and not valid(w:GetParent()))
+                    end
                 end)
                 if not ok then failures=failures+1 end
+                local cleared=pcall(function()
+                    if valid(w.Brush.ResourceObject) then
+                        w:SetBrushResourceObject(nil)
+                        assert(not valid(w.Brush.ResourceObject),"brush_resource_not_cleared")
+                    end
+                end)
+                if not cleared then failures=failures+1 end
             end
         end
         local root,left=resolve(state.root),resolve(state.left)
@@ -70,16 +89,6 @@ return function(snapshot, log)
         s:SetAnchors({Minimum={X=anchorX,Y=anchorY},Maximum={X=anchorX,Y=anchorY}})
         s:SetAlignment({X=alignX,Y=alignY})
         s:SetPosition({X=x,Y=y});s:SetSize({X=width,Y=height})
-    end
-    local function imageBox(w,width,height)
-        local b=w.Brush
-        assert(not valid(b.ResourceObject) and b.ResourceName:ToString()=="None",
-            "brush_asset_not_empty")
-        b.DrawAs,b.ImageType,b.Tiling,b.Mirroring=1,0,0,0
-        b.ImageSize={X=width,Y=height}
-        b.Margin={Left=0,Top=0,Right=0,Bottom=0}
-        b.TintColor={SpecifiedColor={R=1,G=1,B=1,A=1},ColorUseRule=0}
-        w:SetBrush(b)
     end
     -- Read current host state each refresh; diagnostic limits never freeze color.
     local function elementColor(state,pawn)
@@ -140,6 +149,11 @@ return function(snapshot, log)
     local function mount(owner,capacity)
         local hud,tree,left,status=hudFor(owner)
         if not hud then return end
+        assert(artDirectory,"reserve_art_module_path_unavailable")
+        local import=StaticFindObject(importerPath)
+        local library=StaticFindObject("/Script/Engine.Default__KismetRenderingLibrary")
+        assert(valid(import) and import:type()=="UFunction" and import:GetFullName()=="Function "..importerPath
+            and cls(library)=="/Script/Engine.KismetRenderingLibrary","reserve_art_importer_unavailable")
         generation=generation+1
         local name="StaffReserveHUD_"..generation
         local state={hud=ref(hud),tree=ref(tree),left=ref(left),
@@ -149,20 +163,36 @@ return function(snapshot, log)
         state.root=ref(root)
         -- Fixed bottom-center anchor, independent of KBM/gamepad skill widgets.
         slot(left,root,0,-36,340,24,0.5,1,0.5,1)
-        local function box(suffix,x,y,width,height,color)
+        local textures={}
+        local function box(suffix,x,y,art,color)
+            local asset,width,height=table.unpack(art)
             local w=create("Image",tree,name..suffix,state.children)
-            imageBox(w,width,height)
+            local texture=textures[asset]
+            if not texture then
+                texture=import(library,hud,artDirectory.."ReserveArt/"..asset..".png")
+                assert(cls(texture)=="/Script/Engine.Texture2D"
+                    and texture:HasAnyFlags(EObjectFlags.RF_Transient)
+                    and texture:Blueprint_GetSizeX()==2*width
+                    and texture:Blueprint_GetSizeY()==2*height,"reserve_art_import_failed:"..asset)
+                textures[asset]=texture
+            end
+            w:SetBrushFromTexture(texture,false)
+            assert(same(w.Brush.ResourceObject,texture) and w.Brush.DrawAs==3,"reserve_art_bind_failed:"..asset)
             w:SetColorAndOpacity(color)
             slot(root,w,x,y,width,height,0,0,0,0)
             return w
         end
-        box("_Backdrop",0,0,340,24,{R=0.015,G=0.02,B=0.03,A=0.55})
-        box("_LeftEnd",3,8,4,8,{R=0.48,G=0.52,B=0.58,A=0.65})
-        box("_RightEnd",333,8,4,8,{R=0.48,G=0.52,B=0.58,A=0.65})
+        box("_Backdrop",0,0,backdrop,white)
+        box("_LeftEnd",0,7,capLeft,white)
+        box("_RightEnd",328,7,capRight,white)
         for i=1,capacity do
             local x=12+(i-1)*32
-            box("_Bg"..i,x,6,28,12,{R=0.34,G=0.38,B=0.44,A=0.7})
-            local fill=box("_Fill"..i,x+1,7,26,10,{R=0.84,G=0.93,B=1,A=0.98})
+            box("_Bg"..i,x,6,empty,white)
+        end
+        -- Draw all halos above the wells. Only charged cells tint their brush.
+        for i=1,capacity do
+            local x=10+(i-1)*32
+            local fill=box("_Fill"..i,x,4,charged,transparent)
             state.fills[i]=ref(fill)
         end
         -- Constructed children started Hidden so partial configuration cannot flash.
@@ -235,7 +265,7 @@ return function(snapshot, log)
                 local fill=resolve(state.fills[i])
                 assert(fill,"own_fill_lost")
                 if i<=current then fill:SetColorAndOpacity(color)
-                else fill:SetColorAndOpacity({R=0.54,G=0.62,B=0.70,A=0.10}) end
+                else fill:SetColorAndOpacity(transparent) end
             end
             state.rendered=current
             state.color=color

@@ -40,7 +40,14 @@ local function make(path,classPath,outer)
     end
     function o:SetColorAndOpacity(v) self._color=v end
     function o:SetText(v) self._text=v end
-    function o:SetBrush(v) self.Brush=v end
+    function o:SetBrushFromTexture(texture,matchSize)
+        assert(matchSize==false and texture:IsValid())
+        self.Brush.ResourceObject=texture
+    end
+    function o:SetBrushResourceObject(texture)
+        assert(texture==nil)
+        self.Brush.ResourceObject=texture
+    end
     all[path]=o
     return o
 end
@@ -105,6 +112,31 @@ local global={IsValid=function() return true end,
         return second
     end}
 all["/Script/Genesis.Default__GameGlobal"]=global
+local library=make("/Script/Engine.Default__KismetRenderingLibrary","/Script/Engine.KismetRenderingLibrary")
+local importerPath="/Script/Engine.KismetRenderingLibrary:ImportFileAsTexture2D"
+local imports,missing={},{}
+local dimensions={
+    reserve_backdrop={680,48},reserve_cap_left={24,20},reserve_cap_right={24,20},
+    reserve_slot_empty={56,24},reserve_slot_fill={64,32},
+}
+all[importerPath]=setmetatable({
+    IsValid=function() return true end,type=function() return "UFunction" end,
+    GetFullName=function() return "Function "..importerPath end,
+},{
+    __call=function(_,context,hud,filename)
+        assert(context==library and hud==hosts[1])
+        local name=assert(filename:match("[/\\]Scripts[/\\]ReserveArt[/\\](reserve_.+)%.png$"))
+        assert(io.open(filename,"rb")):close()
+        local size=assert(dimensions[name])
+        imports[name]=(imports[name] or 0)+1
+        if missing[name] then return nil end
+        local texture=make("Transient."..name..imports[name],"/Script/Engine.Texture2D")
+        texture.HasAnyFlags=function(_,flag) return flag==1 end
+        texture.Blueprint_GetSizeX=function() return size[1] end
+        texture.Blueprint_GetSizeY=function() return size[2] end
+        return texture
+    end,
+})
 e.StaticFindObject=function(path) return all[path] or classes[path] end
 e.StaticConstructObject=function(c,tree,name)
     local nameText=tostring(name)
@@ -112,7 +144,7 @@ e.StaticConstructObject=function(c,tree,name)
     local path=tree._path.."."..nameText
     local widget=make(path,"/Script/UMG."..kind,tree)
     if kind=="Image" then
-        widget.Brush={ResourceObject=nil,ResourceName={ToString=function() return "None" end}}
+        widget.Brush={ResourceObject=nil,DrawAs=3}
     end
     return widget
 end
@@ -147,14 +179,25 @@ frame(3);assert(observations()==1,"no unchanged per-tick element logs")
 assert(#left0._children==1,"one owned canvas under main")
 local root=left0._children[1]
 assert(root._visible==3 and #root._children==23)
+assert(root.position.Y==-36 and root.size.X==340 and root.size.Y==24)
 assert(root.anchors.Minimum.X==0.5 and root.anchors.Maximum.X==0.5)
 assert(root.alignment.X==0.5 and root.position.X==0 and root.position.Y<0)
-for _,widget in ipairs(root._children) do
+local children={table.unpack(root._children)}
+for _,widget in ipairs(children) do
     assert(widget._visible==3 and widget._class=="/Script/UMG.Image")
     assert(widget.position.X>=0 and widget.position.X+widget.size.X<=root.size.X)
+    assert(widget.position.Y>=0 and widget.position.Y+widget.size.Y<=root.size.Y)
+    assert(widget.Brush.ResourceObject and widget.Brush.DrawAs==3)
 end
 local fills={}
-for i=1,10 do fills[i]=root._children[3+i*2] end
+for name in pairs(dimensions) do assert(imports[name]==1) end
+for i=1,10 do
+    local well=children[3+i]
+    fills[i]=children[13+i]
+    assert(well.Brush.ResourceObject==children[4].Brush.ResourceObject)
+    assert(fills[i].Brush.ResourceObject==fills[1].Brush.ResourceObject)
+    assert(well.position.X==12+(i-1)*32 and fills[i].position.X+2==well.position.X)
+end
 for _,fill in ipairs(fills) do assert(fill._color and fill._color.A>0.9) end
 local astralColor=fills[1]._color
 element="fire";frame()
@@ -183,6 +226,10 @@ for _,case in ipairs({
     local c=fills[1]._color
     assert(c.R==case[2] and c.G==case[3] and c.B==case[4] and c.A==0.98)
     assert(fills[2]._color.R==emptyColor.R and fills[2]._color.A==emptyColor.A)
+    for i=1,13 do
+        local tint=children[i]._color
+        assert(tint.R==1 and tint.G==1 and tint.B==1 and tint.A==1)
+    end
 end
 element="Fire";frame()
 assert(fills[1]._color==neutral,"unknown case must not guess an element")
@@ -210,7 +257,9 @@ assert(root._visible==1,"unknown slot fails closed")
 first,second=4,7;frame()
 assert(root._visible==3 and #left0._children==1,"re-equip reuses existing root")
 current=0;frame()
-for _,fill in ipairs(fills) do assert(fill._color.A<0.2) end
+for _,fill in ipairs(fills) do assert(fill._color.A==0) end
+current=4;frame()
+for i,fill in ipairs(fills) do assert(fill._color.A==(i<=4 and 0.98 or 0)) end
 current=10;frame()
 for _,fill in ipairs(fills) do assert(fill._color.A>0.9) end
 first=6;frame()
@@ -223,11 +272,28 @@ assert(observations()==16 and fills[1]._color.G==0.32,"color still updates after
 hud0.inViewport=false
 frame()
 assert(#left0._children==0,"old owned root removed")
+for _,widget in ipairs(children) do assert(widget.Brush.ResourceObject==nil) end
 local hud1,left1=createHost("HUD1")
 hosts={hud1};frame(10)
 assert(#left1._children==1,"late rebinding creates one own canvas")
 frame(12);assert(#left1._children==1,"no duplicate root")
+for name in pairs(dimensions) do assert(imports[name]==2,"only one import per mount") end
+local rebound={table.unpack(left1._children[1]._children)}
 view.stop()
 assert(cancelled and #left1._children==0,"F7 cleanup detaches own root")
+for _,widget in ipairs(rebound) do assert(widget.Brush.ResourceObject==nil) end
 frame();assert(#left1._children==0,"stale callback inert")
+local hud2,left2=createHost("HUD2")
+hosts={hud2}
+missing.reserve_cap_right=true
+local failureEvents={}
+local failed=callback(function() return current,cap,ownerId() end,
+    function(ev,detail) failureEvents[#failureEvents+1]=ev.." "..detail end)
+assert(failed.start())
+for _=1,12 do loops[2]() end
+assert(#left2._children==0 and imports.reserve_cap_right==3,"partial art failure detaches without retry")
+assert(failureEvents[1]:find("reserve_art_import_failed:reserve_cap_right",1,true))
+for path,widget in pairs(all) do
+    if path:find("HUD2",1,true) and widget.Brush then assert(widget.Brush.ResourceObject==nil) end
+end
 print("PASS: native UMG reserve HUD construction, update, fade, owner rebind and cleanup")
