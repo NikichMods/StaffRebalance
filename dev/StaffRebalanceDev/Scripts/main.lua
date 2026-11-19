@@ -64,6 +64,7 @@ local recoveryContext = root .. "GameGlobalBlueprintLibrary.GameGlobalBlueprintL
 local GLOBAL = "/Script/Genesis.Default__GameGlobal"
 local animSkill = "/Script/Genesis.BaseCharacterAnimInstance:"
 local capacity = 10 -- Phase One experimental gameplay reserve
+local weakDamageMultiplier = 0.33 -- balance experiment 01; strong unchanged
 local diagnosticCapacity = 50 -- log-only, counts eligible unique contacts independent of gameplay cap
 local meleeTraceSeconds, meleeTraceLimit = 90, 24 -- HUD 01 investigation only
 local hooks = {}
@@ -169,7 +170,7 @@ end
 -- Shared float32 weak-damage write. Element-specific source/rate/owner guards
 -- remain in their existing callbacks; Ice zero-rate carriers bypass this.
 local function weakenDamageRate(source, rate, invalidReason, sourceId)
-    local effective = string.unpack("f", string.pack("f", rate * 0.5))
+    local effective = string.unpack("f", string.pack("f", rate * weakDamageMultiplier))
     assert(finite(effective) and effective > 0 and effective < rate, invalidReason)
     local ok, err = pcall(write, source, "DamageRate", effective)
     if not ok then

@@ -5,6 +5,10 @@ local sourceFile = assert(io.open(path, "r"))
 local candidateSource = sourceFile:read("*a")
 sourceFile:close()
 assert(candidateSource:find("local capacity = 10", 1, true))
+assert(candidateSource:find("local weakDamageMultiplier = 0.33", 1, true))
+local function weakFloat32(rate)
+    return string.unpack("f", string.pack("f", rate * 0.33))
+end
 -- Retain the full capacity-three regression matrix below. Explicit Phase One
 -- cases exercise the unmodified candidate through its normal F3 entry point.
 local legacySource, replacements = candidateSource:gsub("local capacity = 10", "local capacity = 3", 1)
@@ -345,7 +349,7 @@ do
     assert(t.has("START reserve=10"))
     for i=1,10 do shot(t,"PhaseOneDrain"..i) end
     assert(t.has("mode=strong before=1 reserve=0"))
-    assert(shot(t,"PhaseOneWeak").rate==0.4375)
+    assert(shot(t,"PhaseOneWeak").rate==weakFloat32(0.875))
     assert(t.has("mode=weak before=0 reserve=0"))
     local first=t.blade("PhaseOneCredit")
     contact(t,first,target)
@@ -412,7 +416,7 @@ for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     assert(shot(t, "Two").rate == 0.875 and shot(t, "Three").rate == 0.875)
     assert(t.has("mode=strong before=1 reserve=0"))
     local weak = shot(t, "Four")
-    assert(weak.rate == 0.4375 and t.has("mode=weak before=0 reserve=0"))
+    assert(weak.rate == weakFloat32(0.875) and t.has("mode=weak before=0 reserve=0"))
     contact(t, weak, target)
     assert(t.has("ASTRAL_HIT mode=weak"))
     local blade = t.blade("First")
@@ -595,7 +599,7 @@ for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     assert(t.count("SHOT") == 2 and t.has("SKIP reason=foreign_astral_owner")
         and t.has("SKIP reason=unsupported_astral_row"))
     assert(shot(t, "Third").rate == 0.875)
-    assert(shot(t, "Fourth").rate == 0.4375)
+    assert(shot(t, "Fourth").rate == weakFloat32(0.875))
     assert(t.count("SHOT") == 4 and t.has("mode=weak before=0 reserve=0"))
     t.keys[7](); assert(not next(t.hooks))
 end
@@ -632,7 +636,7 @@ do
     t.endStep()
     t.beginStep("hilda_staff_atk3")
     local c, d, e = shot(t, "A3-1"), shot(t, "A3-2"), shot(t, "A3-3")
-    assert(c.rate == 0.4375 and d.rate == 0.4375 and e.rate == 0.4375)
+    assert(c.rate == weakFloat32(0.875) and d.rate == weakFloat32(0.875) and e.rate == weakFloat32(0.875))
     assert(t.has("skill=hilda_staff_atk3 mode=weak before=0 reserve=0"))
     t.endStep()
     t.emptyEnd() -- Vanilla extra End(doing=None) must not reopen or debit.
@@ -711,7 +715,7 @@ do
     assert(oldPSC.scaleWrites == 0 and s.has("FIRE_BLAST mode=strong visual=vanilla"))
     local weakSphere = s.fireSphere("WeakBlastSphere", weak)
     s.emit(fireSphereBegin, parameter(weakSphere))
-    assert(weakSphere.rate == string.unpack("f", string.pack("f", 0.45)))
+    assert(weakSphere.rate == weakFloat32(0.9))
     local newBlast, newPSC = s.fireBlast(weak, "DelayedWeakBlast")
     s.emit(fireBlastBegin, parameter(newBlast))
     s.emit(fireBlastBegin, parameter(newBlast))
@@ -750,7 +754,7 @@ do
     local second, secondParticle = s.fireBlast(weak, "BlastCosmeticsDisabled")
     s.emit(fireBlastBegin, parameter(second))
     assert(secondParticle.scaleWrites == 0)
-    assert(sphere.rate == string.unpack("f", string.pack("f", 0.45)))
+    assert(sphere.rate == weakFloat32(0.9))
     s.keys[7]()
     assert(not next(s.hooks))
 end
@@ -802,7 +806,7 @@ do
     local weakSphere = t.fireSphere("VfxWeakSphere", weak)
     t.emit(fireSphereBegin, parameter(strongSphere))
     t.emit(fireSphereBegin, parameter(weakSphere))
-    local weakRate = string.unpack("f", string.pack("f", 0.45))
+    local weakRate = weakFloat32(0.9)
     assert(strongSphere.rate == 0.9 and weakSphere.rate == weakRate)
 
     local cases = {
@@ -887,13 +891,13 @@ do
     t.emit(fireBegin, parameter(nextBolt))
     local weakSphere = t.fireSphere("WeakFireSphere", weakBolt)
     t.emit(fireSphereBegin, parameter(weakSphere))
-    assert(weakSphere.rate == string.unpack("f", string.pack("f", 0.45)))
+    assert(weakSphere.rate == weakFloat32(0.9))
     t.emit(hit, target, parameter(weakSphere), nil, nil, parameter(45.36))
     assert(t.has("FIRE_HIT mode=fire_weak") and t.has("FIRE_BOLT skill=hilda_staff_atk2_fire mode=weak"))
     assert(t.count("FIRE_BOLT") == 5)
     local weakSphere2 = t.fireSphere("WeakFireSphere2", nextBolt)
     t.emit(fireSphereBegin, parameter(weakSphere2))
-    assert(weakSphere2.rate == string.unpack("f", string.pack("f", 0.45)))
+    assert(weakSphere2.rate == weakFloat32(0.9))
     t.endStep()
     contact(t, t.blade("FireRestore1"), target)
     t.beginStep("hilda_staff_atk3_fire")
@@ -957,7 +961,7 @@ do
     t.emit(fireBegin, parameter(weakBolt))
     local sphere = t.fireSphere("WeakWriteErrorSphere", weakBolt)
     t.emit(fireSphereBegin, parameter(sphere))
-    assert(sphere.rate == string.unpack("f", string.pack("f", 0.45)))
+    assert(sphere.rate == weakFloat32(0.9))
     t.endStep()
     t.keys[7]()
 end
@@ -992,7 +996,7 @@ do
     for i = 1, 2 do
         local bolt = s.thunderBolt("WeakThunder" .. i)
         s.emit(thunderBegin, parameter(bolt))
-        assert(bolt.rate == string.unpack("f", string.pack("f", 0.4375)))
+        assert(bolt.rate == string.unpack("f", string.pack("f", weakFloat32(0.875))))
     end
     s.endStep()
     contact(s, s.blade("RestoreThunder"), target)
@@ -1078,7 +1082,7 @@ do
     s.beginStep("hilda_staff_atk1_ice")
     local weak = s.iceBolt("IceWeakParent")
     s.emit(iceBegin, parameter(weak))
-    assert(weak.rate == string.unpack("f", string.pack("f", 0.4))
+    assert(weak.rate == weakFloat32(0.8)
         and s.has("ICE_BOLT skill=hilda_staff_atk1_ice mode=weak before=0 reserve=0 debit=0"))
     contact(s, weak, target)
     assert(s.has("ICE_HIT kind=carrier mode=ice_weak"))
@@ -1090,7 +1094,7 @@ do
     for i=1,4 do
         local pulse = s.iceSphere("WeakPulse" .. i, weak)
         s.emit(icePulseBegin, parameter(pulse))
-        assert(pulse.rate == string.unpack("f", string.pack("f", 0.45)))
+        assert(pulse.rate == weakFloat32(0.9))
         s.emit(icePulseBegin, parameter(pulse))
         assert(s.count("ICE_PULSE") == 3 + i)
     end
@@ -1105,7 +1109,7 @@ do
     s.endStep()
     local late = s.iceSphere("WeakAfterRecharge", weak)
     s.emit(icePulseBegin, parameter(late))
-    assert(late.rate == string.unpack("f", string.pack("f", 0.45)))
+    assert(late.rate == weakFloat32(0.9))
     -- Negative rows: same class must never mean same damage actor.
     local vfx = s.iceSphere("VFX", weak, nil, "hilda_staff_bolt_ice_vfx")
     local fourth = s.iceSphere("Fourth", weak, nil, "hilda_staff_ice_atk4_hit")
@@ -1141,7 +1145,7 @@ do
     local weakPulse = s.iceSphere("ZeroWeakPulse", weak)
     s.emit(icePulseBegin, parameter(strongPulse))
     s.emit(icePulseBegin, parameter(weakPulse))
-    assert(strongPulse.rate == 0.9 and weakPulse.rate == string.unpack("f", string.pack("f", 0.45)))
+    assert(strongPulse.rate == 0.9 and weakPulse.rate == weakFloat32(0.9))
     s.keys[7]()
 end
 do
