@@ -117,7 +117,7 @@ local importerPath="/Script/Engine.KismetRenderingLibrary:ImportFileAsTexture2D"
 local imports,missing={},{}
 local dimensions={
     reserve_backdrop={680,48},reserve_cap_left={24,20},reserve_cap_right={24,20},
-    reserve_slot_empty={56,24},reserve_slot_fill={64,32},
+    reserve_slot_empty={56,24},reserve_slot_fill={64,40},reserve_slot_light={64,40},
 }
 all[importerPath]=setmetatable({
     IsValid=function() return true end,type=function() return "UFunction" end,
@@ -178,8 +178,8 @@ assert(observations()==1 and events[2]:find('value="astral"',1,true))
 frame(3);assert(observations()==1,"no unchanged per-tick element logs")
 assert(#left0._children==1,"one owned canvas under main")
 local root=left0._children[1]
-assert(root._visible==3 and #root._children==23)
-assert(root.position.Y==-36 and root.size.X==340 and root.size.Y==24)
+assert(root._visible==3 and #root._children==33)
+assert(root.position.Y==-25 and root.size.X==255 and root.size.Y==24)
 assert(root.anchors.Minimum.X==0.5 and root.anchors.Maximum.X==0.5)
 assert(root.alignment.X==0.5 and root.position.X==0 and root.position.Y<0)
 local children={table.unpack(root._children)}
@@ -189,14 +189,19 @@ for _,widget in ipairs(children) do
     assert(widget.position.Y>=0 and widget.position.Y+widget.size.Y<=root.size.Y)
     assert(widget.Brush.ResourceObject and widget.Brush.DrawAs==3)
 end
-local fills={}
+local fills,lights={},{}
 for name in pairs(dimensions) do assert(imports[name]==1) end
 for i=1,10 do
     local well=children[3+i]
     fills[i]=children[13+i]
+    lights[i]=children[23+i]
     assert(well.Brush.ResourceObject==children[4].Brush.ResourceObject)
     assert(fills[i].Brush.ResourceObject==fills[1].Brush.ResourceObject)
-    assert(well.position.X==12+(i-1)*32 and fills[i].position.X+2==well.position.X)
+    assert(well.position.X==9+(i-1)*24 and well.size.X==21 and well.size.Y==10)
+    assert(fills[i].position.X+1.5==well.position.X)
+    assert(lights[i].position.X==fills[i].position.X and lights[i].position.Y==fills[i].position.Y)
+    assert(lights[i].size.X==fills[i].size.X and lights[i].size.Y==fills[i].size.Y)
+    assert(lights[i].Brush.ResourceObject==lights[1].Brush.ResourceObject)
 end
 for _,fill in ipairs(fills) do assert(fill._color and fill._color.A>0.9) end
 local astralColor=fills[1]._color
@@ -225,6 +230,9 @@ for _,case in ipairs({
     element=case[1];frame()
     local c=fills[1]._color
     assert(c.R==case[2] and c.G==case[3] and c.B==case[4] and c.A==0.98)
+    local core=lights[1]._color
+    assert(core.R==1 and core.G==1 and core.B==1 and core.A==1)
+    assert(lights[2]._color.A==0)
     assert(fills[2]._color.R==emptyColor.R and fills[2]._color.A==emptyColor.A)
     for i=1,13 do
         local tint=children[i]._color
@@ -257,11 +265,13 @@ assert(root._visible==1,"unknown slot fails closed")
 first,second=4,7;frame()
 assert(root._visible==3 and #left0._children==1,"re-equip reuses existing root")
 current=0;frame()
-for _,fill in ipairs(fills) do assert(fill._color.A==0) end
+for i,fill in ipairs(fills) do assert(fill._color.A==0 and lights[i]._color.A==0) end
 current=4;frame()
-for i,fill in ipairs(fills) do assert(fill._color.A==(i<=4 and 0.98 or 0)) end
+for i,fill in ipairs(fills) do
+    assert(fill._color.A==(i<=4 and 0.98 or 0) and lights[i]._color.A==(i<=4 and 1 or 0))
+end
 current=10;frame()
-for _,fill in ipairs(fills) do assert(fill._color.A>0.9) end
+for i,fill in ipairs(fills) do assert(fill._color.A>0.9 and lights[i]._color.A==1) end
 first=6;frame()
 assert(root._visible==1,"COUNT_MAX is not an equipped weapon")
 first=4;frame()

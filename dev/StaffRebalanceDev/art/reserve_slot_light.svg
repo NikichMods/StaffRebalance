@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="40" viewBox="0 0 32 20">
+  <!-- SPDX-License-Identifier: MPL-2.0 -->
+  <defs>
+    <linearGradient id="beam" x2="0" y2="1">
+      <stop stop-color="white" stop-opacity="0"/>
+      <stop offset=".27" stop-color="white" stop-opacity=".22"/>
+      <stop offset=".5" stop-color="white" stop-opacity=".76"/>
+      <stop offset=".73" stop-color="white" stop-opacity=".20"/>
+      <stop offset="1" stop-color="white" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="ends">
+      <stop stop-color="white" stop-opacity="0"/>
+      <stop offset=".16" stop-color="white"/>
+      <stop offset=".84" stop-color="white"/>
+      <stop offset="1" stop-color="white" stop-opacity="0"/>
+    </linearGradient>
+    <mask id="tips"><rect x="4" y="7" width="24" height="6" fill="url(#ends)"/></mask>
+  </defs>
+  <rect x="4" y="7" width="24" height="6" rx="2" fill="url(#beam)" mask="url(#tips)"/>
+</svg>

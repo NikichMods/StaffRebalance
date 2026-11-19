@@ -7,7 +7,9 @@ local backdrop={"reserve_backdrop",340,24}
 local capLeft={"reserve_cap_left",12,10}
 local capRight={"reserve_cap_right",12,10}
 local empty={"reserve_slot_empty",28,12}
-local charged={"reserve_slot_fill",32,16}
+local charged={"reserve_slot_fill",32,20}
+local light={"reserve_slot_light",32,20}
+local widthScale=0.75
 local white={R=1,G=1,B=1,A=1}
 local transparent={R=1,G=1,B=1,A=0}
 
@@ -157,14 +159,14 @@ return function(snapshot, log)
         generation=generation+1
         local name="StaffReserveHUD_"..generation
         local state={hud=ref(hud),tree=ref(tree),left=ref(left),
-            status=ref(status),owner=owner,capacity=capacity,children={},fills={}}
+            status=ref(status),owner=owner,capacity=capacity,children={},fills={},lights={}}
         owned=state -- partial construction remains eligible for own-only cleanup
         local root=create("CanvasPanel",tree,name)
         state.root=ref(root)
         -- Fixed bottom-center anchor, independent of KBM/gamepad skill widgets.
-        slot(left,root,0,-36,340,24,0.5,1,0.5,1)
+        slot(left,root,0,-25,backdrop[2]*widthScale,backdrop[3],0.5,1,0.5,1)
         local textures={}
-        local function box(suffix,x,y,art,color)
+        local function box(suffix,x,y,art,color,displayHeight)
             local asset,width,height=table.unpack(art)
             local w=create("Image",tree,name..suffix,state.children)
             local texture=textures[asset]
@@ -179,7 +181,7 @@ return function(snapshot, log)
             w:SetBrushFromTexture(texture,false)
             assert(same(w.Brush.ResourceObject,texture) and w.Brush.DrawAs==3,"reserve_art_bind_failed:"..asset)
             w:SetColorAndOpacity(color)
-            slot(root,w,x,y,width,height,0,0,0,0)
+            slot(root,w,x*widthScale,y,width*widthScale,displayHeight or height,0,0,0,0)
             return w
         end
         box("_Backdrop",0,0,backdrop,white)
@@ -187,13 +189,18 @@ return function(snapshot, log)
         box("_RightEnd",328,7,capRight,white)
         for i=1,capacity do
             local x=12+(i-1)*32
-            box("_Bg"..i,x,6,empty,white)
+            box("_Bg"..i,x,7,empty,white,10)
         end
         -- Draw all halos above the wells. Only charged cells tint their brush.
         for i=1,capacity do
             local x=10+(i-1)*32
-            local fill=box("_Fill"..i,x,4,charged,transparent)
+            local fill=box("_Fill"..i,x,2,charged,transparent)
             state.fills[i]=ref(fill)
+        end
+        for i=1,capacity do
+            local x=10+(i-1)*32
+            local core=box("_Light"..i,x,2,light,transparent)
+            state.lights[i]=ref(core)
         end
         -- Constructed children started Hidden so partial configuration cannot flash.
         -- Reveal only fully configured, owned widgets; otherwise the root is empty.
@@ -263,9 +270,11 @@ return function(snapshot, log)
         if dirty or current~=state.rendered or color~=state.color then
             for i=1,capacity do
                 local fill=resolve(state.fills[i])
-                assert(fill,"own_fill_lost")
-                if i<=current then fill:SetColorAndOpacity(color)
-                else fill:SetColorAndOpacity(transparent) end
+                local core=resolve(state.lights[i])
+                assert(fill and core,"own_charge_images_lost")
+                local lit=i<=current
+                fill:SetColorAndOpacity(lit and color or transparent)
+                core:SetColorAndOpacity(lit and white or transparent)
             end
             state.rendered=current
             state.color=color
