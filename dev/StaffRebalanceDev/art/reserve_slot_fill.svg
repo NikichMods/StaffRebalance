@@ -1,16 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="32" viewBox="0 0 32 16">
   <!-- SPDX-License-Identifier: MPL-2.0 -->
   <defs>
-    <radialGradient id="halo">
-      <stop offset=".55" stop-color="white" stop-opacity=".30"/>
-      <stop offset=".84" stop-color="white" stop-opacity=".13"/>
-      <stop offset="1" stop-color="white" stop-opacity="0"/>
-    </radialGradient>
+    <filter id="halo" filterUnits="userSpaceOnUse" x="0" y="0" width="32" height="16">
+      <feGaussianBlur stdDeviation="1.35 1.8"/>
+    </filter>
+    <linearGradient id="haloFade" x2="0" y2="1">
+      <stop offset=".02" stop-color="white" stop-opacity="0"/>
+      <stop offset=".13" stop-color="white"/>
+      <stop offset=".87" stop-color="white"/>
+      <stop offset=".98" stop-color="white" stop-opacity="0"/>
+    </linearGradient>
+    <mask id="haloEdges"><rect width="32" height="16" fill="url(#haloFade)"/></mask>
     <linearGradient id="core" x2="0" y2="1">
-      <stop stop-color="#b6b6b6"/>
-      <stop offset=".30" stop-color="#fff"/>
-      <stop offset=".53" stop-color="#fff"/>
-      <stop offset="1" stop-color="#bcbcbc"/>
+      <stop stop-color="#b1b1b1"/>
+      <stop offset=".25" stop-color="#fbfbfb"/>
+      <stop offset=".50" stop-color="#ededed"/>
+      <stop offset="1" stop-color="#a1a1a1"/>
     </linearGradient>
     <linearGradient id="glint">
       <stop stop-color="white" stop-opacity="0"/>
@@ -19,7 +24,9 @@
       <stop offset="1" stop-color="white" stop-opacity="0"/>
     </linearGradient>
   </defs>
-  <ellipse cx="16" cy="8" rx="16" ry="8" fill="url(#halo)"/>
+  <g mask="url(#haloEdges)">
+    <path d="M5 2.7H27L29 5V11L27 13.3H5L3 11V5Z" fill="white" opacity=".87" filter="url(#halo)"/>
+  </g>
   <path d="M5 3H27L29 5V11L27 13H5L3 11V5Z" fill="#eee" opacity=".38"/>
   <path d="M5.7 4.2H26.3L27.8 5.7V10.3L26.3 11.8H5.7L4.2 10.3V5.7Z" fill="url(#core)"/>
   <path d="M5.2 5.8 6.3 4.8H25.7L26.8 5.8Z" fill="url(#glint)"/>

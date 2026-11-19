@@ -201,7 +201,7 @@ end
 for _,fill in ipairs(fills) do assert(fill._color and fill._color.A>0.9) end
 local astralColor=fills[1]._color
 element="fire";frame()
-assert(observations()==2 and fills[1]._color.R==1 and fills[1]._color.G==0.32)
+assert(observations()==2 and fills[1]._color.R==1 and fills[1]._color.G==0.15)
 assert(fills[1]._color~=astralColor and current==10,"element change updates without reserve change")
 elementError=true;frame(3)
 assert(observations()==3 and root._visible==3,"read failure stays diagnostic only")
@@ -219,8 +219,8 @@ for _,line in ipairs(events) do if line:match("^VALUE") then values=values+1 end
 assert(values==5,"only reserve or resolved color changes redraw")
 local emptyColor=fills[2]._color
 for _,case in ipairs({
-    {"astral",0.60,0.44,1},{"fire",1,0.32,0.08},
-    {"ice",0.28,0.78,1},{"thunder",1,0.83,0.20},
+    {"astral",0.012,0.51,1},{"fire",1,0.15,0.008},
+    {"ice",0.035,0.90,0.67},{"thunder",1,0.72,0.013},
 }) do
     element=case[1];frame()
     local c=fills[1]._color
@@ -268,7 +268,7 @@ first=4;frame()
 for i=1,20 do element="unknown_"..i;frame() end
 assert(observations()==16,"bounded element change diagnostics")
 element="fire";frame()
-assert(observations()==16 and fills[1]._color.G==0.32,"color still updates after trace limit")
+assert(observations()==16 and fills[1]._color.G==0.15,"color still updates after trace limit")
 hud0.inViewport=false
 frame()
 assert(#left0._children==0,"old owned root removed")

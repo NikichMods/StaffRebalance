@@ -14,10 +14,10 @@ local transparent={R=1,G=1,B=1,A=0}
 return function(snapshot, log)
     local neutral={R=0.84,G=0.93,B=1,A=0.98}
     local presets={
-        astral={R=0.60,G=0.44,B=1,A=0.98},
-        fire={R=1,G=0.32,B=0.08,A=0.98},
-        ice={R=0.28,G=0.78,B=1,A=0.98},
-        thunder={R=1,G=0.83,B=0.20,A=0.98},
+        astral={R=0.012,G=0.51,B=1,A=0.98},
+        fire={R=1,G=0.15,B=0.008,A=0.98},
+        ice={R=0.035,G=0.90,B=0.67,A=0.98},
+        thunder={R=1,G=0.72,B=0.013,A=0.98},
     }
     local active,disabled,worker,tick,generation=false,false,nil,0,0
     local owned,dirty=nil,true
