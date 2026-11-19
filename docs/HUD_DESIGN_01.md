@@ -335,3 +335,19 @@ Mock проверяет все четыре exact preset, смену при то
 **MOCK PASS.** Lua 5.4 syntax, боевой и HUD mocks. HUD проверяет 0/4/10, четыре tint-пресета, нейтральный fallback, неизменную геометрию и fade, меню и оба слота оружия, один комплект ресурсов на mount, rebind, F7 и откат частичной установки при отсутствующей текстуре.
 
 **RUNTIME PENDING · VISUAL ACCEPTANCE PENDING.** В art-smoke проверить полный Astral на светлой и тёмной сценах, частично пустую шкалу, Fire без пересвета, соседство с кругами на геймпаде и видимость на клавиатуре/мыши. Завершить проверкой меню, fade и F7. Проверка игрового вида и принятие владельцем относятся к этому кандидату отдельно от предыдущего PASS цветовых пресетов.
+
+### Идентичность кандидата и установка
+
+Исполняемый SHA [`b9f85628bc4a1a596aeb146ae4481fbe74d4076e`](https://github.com/NikichMods/StaffRebalance/commit/b9f85628bc4a1a596aeb146ae4481fbe74d4076e). [GitHub Actions 44426645594](https://github.com/NikichMods/StaffRebalance/actions/runs/44426645594) **PASS** для этого SHA.
+
+Установлен при закрытой игре. Прежний кандидат `16f16c9db2b0c1ea7040904b1f8dd82e830fec7b` сохранён вне дерева загрузки. Установленный `main.lua` сохранил байты принятого кандидата с CRLF, его текст сверен с Git. Новый HUD Lua и пять PNG совпадают побайтово с файлами исходного коммита.
+
+| Установленный файл в `Scripts` | SHA-256 |
+| --- | --- |
+| `main.lua` | `03832f3f6114ae4b9f43fdd648a24bf5961cab90cb8ae9d29afbd53fe56218db` |
+| `StaffReserveHud.lua` | `df5a5219155d5adcdfe49c084398921b4b213addc39594a86e6b13de3c6acd8a` |
+| `ReserveArt/reserve_backdrop.png` | `bd5f7eab47e5364b4527b075411d3abe0f682456ea320b7d58815f893f1b0590` |
+| `ReserveArt/reserve_cap_left.png` | `277e0c084d5b251ad31c63e32ad817598e2fcbf41118c388723dec67da638936` |
+| `ReserveArt/reserve_cap_right.png` | `e77b7d05b608b98f6b4fae56b164512b27dd1cf596e4a95f398849bf680a8ce2` |
+| `ReserveArt/reserve_slot_empty.png` | `0598f1b8622fcecd13db4bd7c135e205f3fbb00a4c59ad5cdd6f0f77b408d3fd` |
+| `ReserveArt/reserve_slot_fill.png` | `4e91dc6b1abd4d663642b33ffeda9d4454fc083ec4b602ba5d1a85ff2dcb2219` |
