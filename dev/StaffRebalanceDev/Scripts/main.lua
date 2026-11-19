@@ -63,7 +63,9 @@ local recovery = root .. "MainGameInstance_BP.MainGameInstance_BP_C:RecoverPlaye
 local recoveryContext = root .. "GameGlobalBlueprintLibrary.GameGlobalBlueprintLibrary_C:RecoverPlayerAndScene"
 local GLOBAL = "/Script/Genesis.Default__GameGlobal"
 local animSkill = "/Script/Genesis.BaseCharacterAnimInstance:"
-local capacity = 10 -- Phase One experimental gameplay reserve
+local capacity = 20 -- ten full charges stored as integer HALF-units
+local strongCost = 2 -- one full charge
+local meleeCredits = {daggers=1, spear=2, hammer=4, sword_shield=2, bracelets=2}
 local weakDamageMultiplier = 0.33 -- balance experiment 01; strong unchanged
 local diagnosticCapacity = 50 -- log-only, counts eligible unique contacts independent of gameplay cap
 local meleeTraceSeconds, meleeTraceLimit = 90, 24 -- HUD 01 investigation only
@@ -317,13 +319,13 @@ local function astralBegin(pawn, context)
     end
     local before = session.reserve
     local first = not combo or not combo.mode
-    local mode = (combo and combo.mode) or (before > 0 and "strong" or "weak")
+    local mode = (combo and combo.mode) or (before >= strongCost and "strong" or "weak")
     local effective = rate
     if mode == "weak" then
         effective = weakenDamageRate(bolt, rate, "invalid_weak_rate", sourceId)
     end
-    local debit = (first and mode == "strong") and 1 or 0
-    if debit == 1 then setReserve(before - 1) end
+    local debit = (first and mode == "strong") and strongCost or 0
+    if debit > 0 then setReserve(before - debit) end
     if combo and first then combo.mode = mode end
     session.shots[sourceId] = mode
     log("SHOT", "skill=" .. skill .. " mode=" .. mode
@@ -373,13 +375,13 @@ local function thunderBegin(pawn, context)
     end
     local before = session.reserve
     local first = not combo.mode
-    local mode = combo.mode or (before > 0 and "strong" or "weak")
+    local mode = combo.mode or (before >= strongCost and "strong" or "weak")
     local effective = rate
     if mode == "weak" then
         effective = weakenDamageRate(bolt, rate, "invalid_weak_thunder_rate", sourceId)
     end
-    local debit = first and mode == "strong" and 1 or 0
-    if debit == 1 then setReserve(before - 1) end
+    local debit = first and mode == "strong" and strongCost or 0
+    if debit > 0 then setReserve(before - debit) end
     if first then combo.mode = mode end
     session.shots[sourceId] = "thunder_" .. mode
     log("THUNDER_BOLT", "skill=" .. skill .. " mode=" .. mode .. " before=" .. before
@@ -507,15 +509,15 @@ local function fireBegin(pawn, context)
     end
     -- Exactly one base Fire bolt was observed per execution; debit at its BeginPlay.
     local before = session.reserve
-    local mode = before > 0 and "strong" or "weak"
+    local mode = before >= strongCost and "strong" or "weak"
     session.fireParents[sourceId] = mode
     -- The damage sphere consumes fireParents; the later exact visual blast still
     -- needs the ORIGINAL bolt's mode. Reuse the existing per-source shot ledger.
     session.shots[sourceId] = "fire_" .. mode
     combo.mode, combo.fireSource = mode, sourceId
-    if mode == "strong" then setReserve(before - 1) end
+    if mode == "strong" then setReserve(before - strongCost) end
     log("FIRE_BOLT", "skill=" .. skill .. " mode=" .. mode .. " before=" .. before
-        .. " reserve=" .. session.reserve .. " debit=" .. (mode == "strong" and 1 or 0)
+        .. " reserve=" .. session.reserve .. " debit=" .. (mode == "strong" and strongCost or 0)
         .. " source=" .. sourceId)
     if session.fireParents[sourceId] == "weak" and not session.fireVfxError then
         fireFlightVfx(bolt, sourceId)
@@ -679,17 +681,17 @@ local function iceBegin(pawn, context)
     -- an executed action and a mode for its damaging child pulses.
     assert(rate >= 0, "invalid_ice_rate")
     local before = session.reserve
-    local mode = before > 0 and "strong" or "weak"
+    local mode = before >= strongCost and "strong" or "weak"
     local effective = rate
     if mode == "weak" and rate > 0 then
         effective = weakenDamageRate(bolt, rate, "invalid_weak_ice_rate", sourceId)
     end
     session.iceParents[sourceId] = mode
     combo.mode, combo.iceSource = mode, sourceId
-    if mode == "strong" then setReserve(before - 1) end
+    if mode == "strong" then setReserve(before - strongCost) end
     session.shots[sourceId] = "ice_" .. mode
     log("ICE_BOLT", "skill=" .. skill .. " mode=" .. mode .. " before=" .. before
-        .. " reserve=" .. session.reserve .. " debit=" .. (mode == "strong" and 1 or 0)
+        .. " reserve=" .. session.reserve .. " debit=" .. (mode == "strong" and strongCost or 0)
         .. " rate=" .. rate .. " effective=" .. effective .. " source=" .. sourceId)
 end
 
@@ -838,10 +840,11 @@ local function hit(pawn, context, sourceParam, _component, _position, damagePara
     diagnostic.total = math.min(diagnosticCapacity, diagnostic.total + 1)
     diagnostic.byWeapon[kind] = math.min(diagnosticCapacity, (diagnostic.byWeapon[kind] or 0) + 1)
     local before = session.reserve
-    setReserve(math.min(capacity, before + 1))
+    local credit = assert(meleeCredits[kind], "unrecognized_melee_kind")
+    setReserve(math.min(capacity, before + credit))
     log("MELEE", "before=" .. before .. " reserve=" .. session.reserve .. " notified_damage=" .. damage
         .. " source=" .. sourceId .. " target=" .. targetId .. " weapon=" .. kind
-        .. " element=" .. element .. " diag_total=" .. diagnostic.total
+        .. " element=" .. element .. " credit_units=" .. credit .. " diag_total=" .. diagnostic.total
         .. " diag_weapon=" .. diagnostic.byWeapon[kind])
 end
 
@@ -979,7 +982,7 @@ local function start()
         shots = {}, fireParents = {}, iceParents = {}, contacts = {}, skippedSkills = {},
         diagnostic = {total = 0, byWeapon = {}},
         meleeTrace = {remaining = meleeTraceLimit, deadline = os.time() + meleeTraceSeconds}}
-    log("START", "reserve=" .. capacity .. " hooks=" .. #hooks
+    log("START", "reserve=" .. capacity .. " half_units=true hooks=" .. #hooks
         .. " fire=" .. (fireReady and "ready" or "unavailable")
         .. " thunder=" .. (thunderReady and "ready" or "unavailable")
         .. " ice=" .. (iceReady and "ready" or "unavailable")

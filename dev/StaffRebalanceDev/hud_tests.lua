@@ -63,7 +63,7 @@ pawn.GetClass=function()
     return {GetFullName=function() return "BlueprintGeneratedClass /Game/hilda_BP_C" end,
         GetFName=function() return {ToString=function() return "hilda_BP_C" end} end}
 end
-local current,cap=10,10
+local current,cap=20,20
 local inputMode,menuVisibility=0,3
 local element,elementError="astral",false
 local hand=1
@@ -118,6 +118,7 @@ local imports,missing={},{}
 local dimensions={
     reserve_backdrop={680,48},reserve_cap_left={24,20},reserve_cap_right={24,20},
     reserve_slot_empty={56,24},reserve_slot_fill={64,40},reserve_slot_light={64,40},
+    reserve_slot_fill_half={64,40},reserve_slot_light_half={64,40},
 }
 all[importerPath]=setmetatable({
     IsValid=function() return true end,type=function() return "UFunction" end,
@@ -178,7 +179,7 @@ assert(observations()==1 and events[2]:find('value="astral"',1,true))
 frame(3);assert(observations()==1,"no unchanged per-tick element logs")
 assert(#left0._children==1,"one owned canvas under main")
 local root=left0._children[1]
-assert(root._visible==3 and #root._children==33)
+assert(root._visible==3 and #root._children==53)
 assert(root.position.Y==-25 and root.size.X==255 and root.size.Y==24)
 assert(root.anchors.Minimum.X==0.5 and root.anchors.Maximum.X==0.5)
 assert(root.alignment.X==0.5 and root.position.X==0 and root.position.Y<0)
@@ -189,12 +190,14 @@ for _,widget in ipairs(children) do
     assert(widget.position.Y>=0 and widget.position.Y+widget.size.Y<=root.size.Y)
     assert(widget.Brush.ResourceObject and widget.Brush.DrawAs==3)
 end
-local fills,lights={},{}
+local fills,lights,halfFills,halfLights={},{},{},{}
 for name in pairs(dimensions) do assert(imports[name]==1) end
 for i=1,10 do
     local well=children[3+i]
     fills[i]=children[13+i]
-    lights[i]=children[23+i]
+    halfFills[i]=children[23+i]
+    lights[i]=children[33+i]
+    halfLights[i]=children[43+i]
     assert(well.Brush.ResourceObject==children[4].Brush.ResourceObject)
     assert(fills[i].Brush.ResourceObject==fills[1].Brush.ResourceObject)
     assert(well.position.X==9+(i-1)*24 and well.size.X==21 and well.size.Y==10)
@@ -202,12 +205,16 @@ for i=1,10 do
     assert(lights[i].position.X==fills[i].position.X and lights[i].position.Y==fills[i].position.Y)
     assert(lights[i].size.X==fills[i].size.X and lights[i].size.Y==fills[i].size.Y)
     assert(lights[i].Brush.ResourceObject==lights[1].Brush.ResourceObject)
+    assert(halfFills[i].Brush.ResourceObject==halfFills[1].Brush.ResourceObject)
+    assert(halfLights[i].Brush.ResourceObject==halfLights[1].Brush.ResourceObject)
+    assert(halfFills[i].position.X==fills[i].position.X and halfFills[i].size.X==fills[i].size.X)
+    assert(halfLights[i].position.X==lights[i].position.X and halfLights[i].size.Y==lights[i].size.Y)
 end
 for _,fill in ipairs(fills) do assert(fill._color and fill._color.A>0.9) end
 local astralColor=fills[1]._color
 element="fire";frame()
 assert(observations()==2 and fills[1]._color.R==1 and fills[1]._color.G==0.15)
-assert(fills[1]._color~=astralColor and current==10,"element change updates without reserve change")
+assert(fills[1]._color~=astralColor and current==20,"element change updates without reserve change")
 elementError=true;frame(3)
 assert(observations()==3 and root._visible==3,"read failure stays diagnostic only")
 local neutral=fills[1]._color
@@ -216,9 +223,9 @@ elementError=false;element=nil;frame(3)
 assert(observations()==4,"unsupported type logs once")
 element="fire";frame()
 assert(observations()==5)
-current=1;view.changed(10,1);frame()
+current=2;view.changed(20,2);frame()
 for i,fill in ipairs(fills) do assert((fill._color.A>0.9)==(i==1)) end
-view.changed(1,1);frame()
+view.changed(2,2);frame()
 local values=0
 for _,line in ipairs(events) do if line:match("^VALUE") then values=values+1 end end
 assert(values==5,"only reserve or resolved color changes redraw")
@@ -232,7 +239,7 @@ for _,case in ipairs({
     assert(c.R==case[2] and c.G==case[3] and c.B==case[4] and c.A==0.98)
     local core=lights[1]._color
     assert(core.R==1 and core.G==1 and core.B==1 and core.A==1)
-    assert(lights[2]._color.A==0)
+    assert(lights[2]._color.A==0 and halfFills[1]._color.A==0 and halfLights[1]._color.A==0)
     assert(fills[2]._color.R==emptyColor.R and fills[2]._color.A==emptyColor.A)
     for i=1,13 do
         local tint=children[i]._color
@@ -247,7 +254,7 @@ assert(ap0:GetRenderOpacity()==0.2)
 -- Main_Panel remains visible while the native HUD branch is hidden by menus.
 for _,visibility in ipairs({1,2}) do
     menuVisibility=visibility;frame()
-    assert(root._visible==1 and current==1 and #left0._children==1)
+    assert(root._visible==1 and current==2 and #left0._children==1)
 end
 menuVisibility=3;inputMode=1;frame()
 assert(root._visible==1,"UI input mode hides even before native owner hides")
@@ -257,7 +264,7 @@ menuVisibility=nil;frame()
 assert(root._visible==1,"unknown menu owner visibility fails closed")
 menuVisibility=3;frame()
 first,second=2,7;frame()
-assert(root._visible==1 and current==1,"staff absent hides without reserve reset")
+assert(root._visible==1 and current==2,"staff absent hides without reserve reset")
 first,second=2,4;frame()
 assert(root._visible==3,"staff in second slot while melee selected")
 first=nil;frame()
@@ -265,13 +272,30 @@ assert(root._visible==1,"unknown slot fails closed")
 first,second=4,7;frame()
 assert(root._visible==3 and #left0._children==1,"re-equip reuses existing root")
 current=0;frame()
-for i,fill in ipairs(fills) do assert(fill._color.A==0 and lights[i]._color.A==0) end
-current=4;frame()
+for i,fill in ipairs(fills) do
+    assert(fill._color.A==0 and lights[i]._color.A==0)
+    assert(halfFills[i]._color.A==0 and halfLights[i]._color.A==0)
+end
+current=1;frame()
+assert(fills[1]._color.A==0 and lights[1]._color.A==0)
+assert(halfFills[1]._color.A==0.98 and halfLights[1]._color.A==1)
+assert(halfFills[2]._color.A==0 and halfLights[2]._color.A==0)
+current=3;frame()
+assert(fills[1]._color.A==0.98 and lights[1]._color.A==1)
+assert(halfFills[1]._color.A==0 and halfLights[1]._color.A==0)
+assert(fills[2]._color.A==0 and halfFills[2]._color.A==0.98 and halfLights[2]._color.A==1)
+current=19;frame()
+for i=1,10 do
+    assert(fills[i]._color.A==(i<=9 and 0.98 or 0))
+    assert(halfFills[i]._color.A==(i==10 and 0.98 or 0))
+    assert(halfLights[i]._color.A==(i==10 and 1 or 0))
+end
+current=8;frame()
 for i,fill in ipairs(fills) do
     assert(fill._color.A==(i<=4 and 0.98 or 0) and lights[i]._color.A==(i<=4 and 1 or 0))
 end
-current=10;frame()
-for i,fill in ipairs(fills) do assert(fill._color.A>0.9 and lights[i]._color.A==1) end
+current=20;frame()
+for i,fill in ipairs(fills) do assert(fill._color.A>0.9 and lights[i]._color.A==1 and halfFills[i]._color.A==0) end
 first=6;frame()
 assert(root._visible==1,"COUNT_MAX is not an equipped weapon")
 first=4;frame()

@@ -8,7 +8,9 @@ local capLeft={"reserve_cap_left",12,10}
 local capRight={"reserve_cap_right",12,10}
 local empty={"reserve_slot_empty",28,12}
 local charged={"reserve_slot_fill",32,20}
+local chargedHalf={"reserve_slot_fill_half",32,20}
 local light={"reserve_slot_light",32,20}
+local lightHalf={"reserve_slot_light_half",32,20}
 local widthScale=0.75
 local white={R=1,G=1,B=1,A=1}
 local transparent={R=1,G=1,B=1,A=0}
@@ -158,8 +160,9 @@ return function(snapshot, log)
             and cls(library)=="/Script/Engine.KismetRenderingLibrary","reserve_art_importer_unavailable")
         generation=generation+1
         local name="StaffReserveHUD_"..generation
+        local slotCount=capacity/2 -- 20 half-units shown as ten cells
         local state={hud=ref(hud),tree=ref(tree),left=ref(left),
-            status=ref(status),owner=owner,capacity=capacity,children={},fills={},lights={}}
+            status=ref(status),owner=owner,capacity=capacity,children={},fills={},halfFills={},lights={},halfLights={}}
         owned=state -- partial construction remains eligible for own-only cleanup
         local root=create("CanvasPanel",tree,name)
         state.root=ref(root)
@@ -187,20 +190,30 @@ return function(snapshot, log)
         box("_Backdrop",0,0,backdrop,white)
         box("_LeftEnd",0,7,capLeft,white)
         box("_RightEnd",328,7,capRight,white)
-        for i=1,capacity do
+        for i=1,slotCount do
             local x=12+(i-1)*32
             box("_Bg"..i,x,7,empty,white,10)
         end
         -- Draw all halos above the wells. Only charged cells tint their brush.
-        for i=1,capacity do
+        for i=1,slotCount do
             local x=10+(i-1)*32
             local fill=box("_Fill"..i,x,2,charged,transparent)
             state.fills[i]=ref(fill)
         end
-        for i=1,capacity do
+        for i=1,slotCount do
+            local x=10+(i-1)*32
+            local halfFill=box("_HalfFill"..i,x,2,chargedHalf,transparent)
+            state.halfFills[i]=ref(halfFill)
+        end
+        for i=1,slotCount do
             local x=10+(i-1)*32
             local core=box("_Light"..i,x,2,light,transparent)
             state.lights[i]=ref(core)
+        end
+        for i=1,slotCount do
+            local x=10+(i-1)*32
+            local halfCore=box("_HalfLight"..i,x,2,lightHalf,transparent)
+            state.halfLights[i]=ref(halfCore)
         end
         -- Constructed children started Hidden so partial configuration cannot flash.
         -- Reveal only fully configured, owned widgets; otherwise the root is empty.
@@ -211,12 +224,12 @@ return function(snapshot, log)
         end
         root:SetVisibility(3) -- SelfHitTestInvisible, no focus/input change
         dirty=true
-        log("ATTACHED","slots="..capacity.." owned_widgets="..(#state.children+1))
+        log("ATTACHED","slots="..slotCount.." owned_widgets="..(#state.children+1))
     end
     local function refresh()
         local current,capacity,owner=snapshot()
         if math.type(current)~="integer" or math.type(capacity)~="integer"
-            or capacity~=10 or current<0 or current>capacity
+            or capacity~=20 or current<0 or current>capacity
             or type(owner)~="string" or owner=="" then
             if owned then detach("inactive") end
             return
@@ -268,18 +281,22 @@ return function(snapshot, log)
         assert(type(opacity)=="number" and opacity>=0 and opacity<=1,"invalid_ap_opacity")
         if math.abs(root:GetRenderOpacity()-opacity)>0.001 then root:SetRenderOpacity(opacity) end
         if dirty or current~=state.rendered or color~=state.color then
-            for i=1,capacity do
-                local fill=resolve(state.fills[i])
-                local core=resolve(state.lights[i])
-                assert(fill and core,"own_charge_images_lost")
-                local lit=i<=current
+            local full=math.floor(current/2)
+            local partial=(current%2==1) and (full+1) or -1
+            for i=1,capacity/2 do
+                local fill,halfFill=resolve(state.fills[i]),resolve(state.halfFills[i])
+                local core,halfCore=resolve(state.lights[i]),resolve(state.halfLights[i])
+                assert(fill and halfFill and core and halfCore,"own_charge_images_lost")
+                local lit,half=i<=full,i==partial
                 fill:SetColorAndOpacity(lit and color or transparent)
                 core:SetColorAndOpacity(lit and white or transparent)
+                halfFill:SetColorAndOpacity(half and color or transparent)
+                halfCore:SetColorAndOpacity(half and white or transparent)
             end
             state.rendered=current
             state.color=color
             dirty=false
-            log("VALUE","reserve="..current.."/"..capacity)
+            log("VALUE","reserve="..(current/2).."/10 units="..current.."/"..capacity)
         end
     end
     local function stop()

@@ -4,14 +4,21 @@ local path = assert(arg[1])
 local sourceFile = assert(io.open(path, "r"))
 local candidateSource = sourceFile:read("*a")
 sourceFile:close()
-assert(candidateSource:find("local capacity = 10", 1, true))
+assert(candidateSource:find("local capacity = 20", 1, true))
+assert(candidateSource:find("local strongCost = 2", 1, true))
+assert(candidateSource:find("local meleeCredits = {daggers=1, spear=2, hammer=4, sword_shield=2, bracelets=2}",1,true))
 assert(candidateSource:find("local weakDamageMultiplier = 0.33", 1, true))
 local function weakFloat32(rate)
     return string.unpack("f", string.pack("f", rate * 0.33))
 end
--- Retain the full capacity-three regression matrix below. Explicit Phase One
--- cases exercise the unmodified candidate through its normal F3 entry point.
-local legacySource, replacements = candidateSource:gsub("local capacity = 10", "local capacity = 3", 1)
+-- Preserve the historic 3-charge regressions as a controlled legacy fixture.
+-- The real new 20 HALF-unit candidate is separately exercised below without rewrites.
+local legacySource, replacements = candidateSource:gsub("local capacity = 20", "local capacity = 3", 1)
+assert(replacements == 1)
+legacySource,replacements=legacySource:gsub("local strongCost = 2", "local strongCost = 1", 1)
+assert(replacements == 1)
+legacySource,replacements=legacySource:gsub("local meleeCredits = {daggers=1, spear=2, hammer=4, sword_shield=2, bracelets=2}",
+    "local meleeCredits = {daggers=1, spear=1, hammer=1, sword_shield=1, bracelets=1}", 1)
 assert(replacements == 1)
 local assets = "/Game/MainContent/Act/Skill_BP/PlayerSkill_BP/"
 local astral = assets .. "hilda_staff_bolt_astral.hilda_staff_bolt_astral_C"
@@ -343,29 +350,121 @@ local function contact(test, blade, enemy)
     test.emit(hit, enemy, parameter(blade), nil, nil, parameter(0))
 end
 
+-- Melee Refill 01 — exact real candidate, all values in HALF-units (20 = ten full).
 do
     local t = setup({phaseOne=true})
     t.keys[3]()
-    assert(t.has("START reserve=10"))
+    assert(t.has("START reserve=20 half_units=true"))
     for i=1,10 do shot(t,"PhaseOneDrain"..i) end
-    assert(t.has("mode=strong before=1 reserve=0"))
+    assert(t.has("mode=strong before=2 reserve=0"))
     assert(shot(t,"PhaseOneWeak").rate==weakFloat32(0.875))
     assert(t.has("mode=weak before=0 reserve=0"))
-    local first=t.blade("PhaseOneCredit")
+
+    local first=t.blade("PhaseOneHalf")
     contact(t,first,target)
     contact(t,first,target)
     assert(t.count("MELEE")==1 and t.has("DUPLICATE reserve=1"))
-    for i=2,11 do contact(t,t.blade("PhaseOneCredit"..i),target) end
-    assert(t.has("MELEE before=9 reserve=10") and t.has("MELEE before=10 reserve=10"))
+    assert(t.has("MELEE before=0 reserve=1"))
+    assert(shot(t,"StillWeakAtHalf").rate==weakFloat32(0.875))
+    assert(t.has("mode=weak before=1 reserve=1"))
+    contact(t,t.blade("SecondHalf"),target)
+    assert(t.has("MELEE before=1 reserve=2"))
+    assert(shot(t,"PaidAfterSecondHalf").rate==0.875)
+    assert(t.has("mode=strong before=2 reserve=0"))
+
+    for i=1,10 do contact(t,t.melee("SpearCredit"..i,"spear"),target) end
+    assert(t.has("MELEE before=18 reserve=20"))
+    contact(t,t.melee("OverCapHammer","hammer"),target)
+    assert(t.has("MELEE before=20 reserve=20"))
     shot(t,"BeforeRest")
     t.emit(conduit .. "Interact_Rest",point)
     t.emit(recovery,game);t.emit(context,nil,point)
-    assert(t.has("REST before=9 reserve=10"))
+    assert(t.has("REST before=18 reserve=20"))
     t.beginStep("hilda_staff_atk2")
     shot(t,"Combo1");shot(t,"Combo2");t.endStep()
-    assert(t.has("before=10 reserve=9") and t.has("before=9 reserve=9"))
+    assert(t.has("before=20 reserve=18") and t.has("before=18 reserve=18"))
     t.keys[7]()
-    assert(t.has("STOP reserve=9 hooks_remaining=0") and not next(t.hooks))
+    assert(t.has("STOP reserve=18 hooks_remaining=0") and not next(t.hooks))
+end
+
+-- Each exact melee family retains source/row/owner guards and its new credit.
+for _,case in ipairs({
+    {"daggers_base",1},{"daggers_plus",1},{"spear",2},{"hammer",4},
+    {"sword_shield",2},{"bracelets",2},{"bracelets_3",2},{"bracelets_4",2}
+}) do
+    local t=setup({phaseOne=true})
+    t.keys[3]()
+    for i=1,10 do shot(t,"Drain"..i) end
+    local source = case[1]=="daggers_base" and t.blade("Credit")
+        or t.melee("Credit",case[1])
+    contact(t,source,target)
+    assert(t.has("MELEE before=0 reserve="..case[2].." ") and
+        t.has("credit_units="..case[2]))
+    contact(t,source,target)
+    assert(t.has("DUPLICATE reserve="..case[2]) and t.count("MELEE")==1)
+    if case[2]==1 then
+        assert(shot(t,"PartialMustStayWeak").rate==weakFloat32(0.875))
+        assert(t.has("mode=weak before=1 reserve=1"))
+    else
+        assert(shot(t,"StrongCostsTwo").rate==0.875)
+        assert(t.has("mode=strong before="..case[2].." reserve="..(case[2]-2)))
+    end
+    t.keys[7]()
+    assert(not next(t.hooks))
+end
+
+-- Cap near 20, multi-target credit and no double grant from same source-target.
+do
+    local t=setup({phaseOne=true})
+    t.keys[3]()
+    shot(t,"To18")
+    contact(t,t.blade("To19"),target)
+    assert(t.has("MELEE before=18 reserve=19"))
+    contact(t,t.blade("To20"),target)
+    assert(t.has("MELEE before=19 reserve=20"))
+    local hammer=t.melee("CappedHammer","hammer")
+    contact(t,hammer,target)
+    contact(t,hammer,target)
+    assert(t.has("MELEE before=20 reserve=20") and t.has("DUPLICATE reserve=20"))
+    shot(t,"To18Again")
+    local sweep=t.melee("HammerTwoTargets","hammer")
+    contact(t,sweep,target)
+    contact(t,sweep,other)
+    assert(t.has("MELEE before=18 reserve=20") and t.count("DUPLICATE")==1)
+    t.keys[7]()
+end
+
+-- One remaining half-unit is never sufficient in other basic elements.
+for _,element in ipairs({"fire","ice","thunder"}) do
+    local t=setup({phaseOne=true})
+    t.keys[3]()
+    for i=1,10 do shot(t,"Exhaust"..i) end
+    contact(t,t.blade("LoneHalf"),target)
+    assert(t.has("MELEE before=0 reserve=1"))
+    local skill="hilda_staff_atk1_"..element
+    t.beginStep(skill)
+    if element=="fire" then
+        local parent=t.fireBolt("HalfFire")
+        t.emit(fireBegin,parameter(parent))
+        local sphere=t.fireSphere("HalfFireSphere",parent)
+        t.emit(fireSphereBegin,parameter(sphere))
+        assert(sphere.rate==weakFloat32(0.9) and t.has("FIRE_BOLT skill="..skill.." mode=weak before=1 reserve=1 debit=0"))
+    elseif element=="ice" then
+        local parent=t.iceBolt("HalfIce")
+        t.emit(iceBegin,parameter(parent))
+        local pulse=t.iceSphere("HalfIcePulse",parent)
+        t.emit(icePulseBegin,parameter(pulse))
+        assert(parent.rate==weakFloat32(0.8) and pulse.rate==weakFloat32(0.9)
+            and t.has("ICE_BOLT skill="..skill.." mode=weak before=1 reserve=1 debit=0"))
+    else
+        local bolt=t.thunderBolt("HalfThunder")
+        t.emit(thunderBegin,parameter(bolt))
+        assert(bolt.rate==weakFloat32(0.875)
+            and t.has("THUNDER_BOLT skill="..skill.." mode=weak before=1 reserve=1 debit=0"))
+    end
+    t.endStep()
+    t.keys[7]()
+    assert(not next(t.hooks))
 end
 
 -- HUD 01 research trace samples the callback before the melee guards.

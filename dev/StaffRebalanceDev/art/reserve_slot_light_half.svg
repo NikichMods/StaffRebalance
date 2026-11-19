@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="40" viewBox="0 0 32 20">
+  <!-- SPDX-License-Identifier: MPL-2.0 -->
+  <!-- Original half-width light kernel: same size/alignment as full core, cropped at center. -->
+  <defs>
+    <linearGradient id="beam" gradientUnits="userSpaceOnUse" x1="0" y1="7" x2="0" y2="13">
+      <stop offset="0" stop-color="white" stop-opacity="0"/>
+      <stop offset=".27" stop-color="white" stop-opacity=".22"/>
+      <stop offset=".5" stop-color="white" stop-opacity=".76"/>
+      <stop offset=".73" stop-color="white" stop-opacity=".20"/>
+      <stop offset="1" stop-color="white" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="half" clipPathUnits="userSpaceOnUse"><rect width="16" height="20"/></clipPath>
+  </defs>
+  <g clip-path="url(#half)"><rect x="4" y="7" width="24" height="6" rx="2" fill="url(#beam)"/></g>
+</svg>
