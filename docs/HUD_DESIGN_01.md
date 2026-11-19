@@ -368,3 +368,10 @@ Mock проверяет все четыре exact preset, смену при то
 | Thunder | `1.00, 0.72, 0.013` | Насыщенный золотисто-жёлтый |
 
 Ice и Thunder — авторский подбор до появления игровых образцов. Мягкий ореол следует форме заряда и запечён в RGBA той же нейтральной текстуры `reserve_slot_fill`. В экспортированном PNG ореол усилен у боков и граней, внешние пиксели прозрачны. **MOCK PASS** для четырёх tint, 0/4/10, нейтрального fallback, видимости и cleanup. **RUNTIME PENDING · VISUAL ACCEPTANCE PENDING** для исправленной палитры и ореола.
+
+Кандидат [`8ba7c68fe8105f29397db96c0fa19cf309272f6c`](https://github.com/NikichMods/StaffRebalance/commit/8ba7c68fe8105f29397db96c0fa19cf309272f6c), [CI 44429676430](https://github.com/NikichMods/StaffRebalance/actions/runs/44429676430) **PASS**. Установлен при закрытой игре с проверенной копией прежнего кандидата. Установочные хеши остальных файлов совпадают с таблицей выше.
+
+| Изменённый файл в `Scripts` | Установочный SHA-256 |
+| --- | --- |
+| `StaffReserveHud.lua` | `460c44bfbc0aecd61dc739640c32d987f14421586ff7dadd0d1e4f130b7c1d47` |
+| `ReserveArt/reserve_slot_fill.png` | `d7da9c77dfa45383a8e91cb6dc537a00670d342ed05229f8eecec005682810a7` |
