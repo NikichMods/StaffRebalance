@@ -20,6 +20,9 @@ assert(replacements == 1)
 legacySource,replacements=legacySource:gsub("local meleeCredits = {daggers=1, spear=2, hammer=4, sword_shield=2, bracelets=2}",
     "local meleeCredits = {daggers=1, spear=1, hammer=1, sword_shield=1, bracelets=1}", 1)
 assert(replacements == 1)
+-- Historic log assertions refer to the pre-half-unit dev format.
+legacySource,replacements=legacySource:gsub(' half_units=true', '', 1)
+assert(replacements == 1)
 local assets = "/Game/MainContent/Act/Skill_BP/PlayerSkill_BP/"
 local astral = assets .. "hilda_staff_bolt_astral.hilda_staff_bolt_astral_C"
 local fireBolt = assets .. "hilda_staff_bolt_fire.hilda_staff_bolt_fire_C"
