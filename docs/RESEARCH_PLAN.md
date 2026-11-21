@@ -21,9 +21,13 @@
 
 В локальном UHT GameGlobal объявляет запросы `NotifyNeedLoadGameDataMain/Current/AutoSave` и `ExecuteNotifyLoadGameData`. `GenesisGameInstance.EventCharacterDead` и `GenesisCharacter.ReviveEvent` отражены как Blueprint events. У Conduit есть отдельные `Interact_Transport` и `Interact_Rest`. Сигнатуры дают точки наблюдения, но ещё не доказывают вызовы, успешное завершение загрузки или роль каждого callback.
 
+В сохранённом cooked-графе `MainGameInstance_BP` конкретный `EventCharacterDead` входит в ubergraph на 46629, получает текущего игрока и сверяет его с аргументом события. В ветви 40684–40741 проверяется `IsEnableDeadRespawn` и устанавливается `EventDeadState=1`. Ветка `StopDeadProcess` содержит вызов `BeginLoadPlayerSavedLocation` на 45896. Это статически связывает смерть с возможной загрузкой позиции и объясняет, почему имя функции загрузки позиции само по себе не отличает ручную загрузку от возрождения. SHA-256 экспорта ubergraph `ffdf198a50c545969ca72588d067ec5abce0ee8ad3729d03e554fd9123697a90`.
+
 **Метод:** [read-only observer](../research/lifecycle-01/StaffRebalanceLifecycleObserver/Scripts/main.lua) включается с процессом и пишет привязки, события и изменившиеся снимки pawn/world/HP/anim. Он не меняет резерв, игру и настройки. Одна последовательность: холодный вход с Fire, обычный переход локации, телепорт Conduit, ручная загрузка, смерть и возвращение управления. Проверить, готовы ли Fire bolt и дочерняя сфера до первого Fire-выстрела: текущий ручной запуск пропускает optional hooks при незагруженном классе.
 
 Перенос остатка при смене контекста возможен без классификации каждого travel, если подтверждены сигналы только для load/respawn reset. Смена pawn/world или восстановление HP сами по себе не обосновывают сброс. При поздней готовности Fire нужно решить регистрацию до первого настоящего Fire-действия. Игровой результат наблюдателя и боевой автозапуск открыты.
+
+Наблюдатель `868c7324abf0c1d81f77110798bdfb482d9b1efa` установлен при закрытой игре отдельным модом, SHA-256 Lua `097b82cadc3fdfc4670173c909bd0fa9681ee9937b5d02b2022cd36a0ac5bc9b`. Lua 5.4 syntax и узкий mock регистрации PASS. Принятый боевой кандидат остаётся установленным рядом.
 
 1. Актуальные NikichMods/DevRules: WORKING_RULES.md, ENGINEERING_RULES.md, GIT_WORKFLOW.md, CODEX_WORKFLOW.md; RUNTIME_INTEGRATION.md и RUNTIME_TEST_HARNESS.md — по факту выбранной техники.
 2. Локальные AGENTS.md, REQUIREMENTS.md, STATUS.md; принятые технические документы [STATIC_COMBAT_RESEARCH_01](STATIC_COMBAT_RESEARCH_01.md), [STAFF_ELEMENTAL_COVERAGE_01](STAFF_ELEMENTAL_COVERAGE_01.md), [ASTRAL_NATIVE_HP_PATH](ASTRAL_NATIVE_HP_PATH.md), [COMBAT_OBSERVATION_01](COMBAT_OBSERVATION_01.md).
