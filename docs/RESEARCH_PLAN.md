@@ -15,6 +15,16 @@
 
 ## Источники прежде новых экспериментов
 
+### Lifecycle 01 — автозапуск, загрузка и возрождение (2026-11-22)
+
+Владелец утвердил [правило резерва](REQUIREMENTS.md#принятые-правила): полный после загрузки сохранения или возрождения, точный остаток при смене локации и телепорте. Обычный вход должен обходиться без F3. Текущий dev привязывает сессию к pawn/anim и считает смену pawn ошибкой. Новый запуск должен дождаться готового игрока, а при перепривязке хранить резерв отдельно от состояния старых атак в рамках одной сессии.
+
+В локальном UHT GameGlobal объявляет запросы `NotifyNeedLoadGameDataMain/Current/AutoSave` и `ExecuteNotifyLoadGameData`. `GenesisGameInstance.EventCharacterDead` и `GenesisCharacter.ReviveEvent` отражены как Blueprint events. У Conduit есть отдельные `Interact_Transport` и `Interact_Rest`. Сигнатуры дают точки наблюдения, но ещё не доказывают вызовы, успешное завершение загрузки или роль каждого callback.
+
+**Метод:** [read-only observer](../research/lifecycle-01/StaffRebalanceLifecycleObserver/Scripts/main.lua) включается с процессом и пишет привязки, события и изменившиеся снимки pawn/world/HP/anim. Он не меняет резерв, игру и настройки. Одна последовательность: холодный вход с Fire, обычный переход локации, телепорт Conduit, ручная загрузка, смерть и возвращение управления. Проверить, готовы ли Fire bolt и дочерняя сфера до первого Fire-выстрела: текущий ручной запуск пропускает optional hooks при незагруженном классе.
+
+Перенос остатка при смене контекста возможен без классификации каждого travel, если подтверждены сигналы только для load/respawn reset. Смена pawn/world или восстановление HP сами по себе не обосновывают сброс. При поздней готовности Fire нужно решить регистрацию до первого настоящего Fire-действия. Игровой результат наблюдателя и боевой автозапуск открыты.
+
 1. Актуальные NikichMods/DevRules: WORKING_RULES.md, ENGINEERING_RULES.md, GIT_WORKFLOW.md, CODEX_WORKFLOW.md; RUNTIME_INTEGRATION.md и RUNTIME_TEST_HARNESS.md — по факту выбранной техники.
 2. Локальные AGENTS.md, REQUIREMENTS.md, STATUS.md; принятые технические документы [STATIC_COMBAT_RESEARCH_01](STATIC_COMBAT_RESEARCH_01.md), [STAFF_ELEMENTAL_COVERAGE_01](STAFF_ELEMENTAL_COVERAGE_01.md), [ASTRAL_NATIVE_HP_PATH](ASTRAL_NATIVE_HP_PATH.md), [COMBAT_OBSERVATION_01](COMBAT_OBSERVATION_01.md).
 3. Общий NikichMods/Asterigos-Research — только относящиеся к вопросу проверенные данные. Не повторять уже закрытые прогоны и не превращать старые требования в обязательный gate.
