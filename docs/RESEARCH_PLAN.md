@@ -29,6 +29,18 @@
 
 Наблюдатель `868c7324abf0c1d81f77110798bdfb482d9b1efa` установлен при закрытой игре отдельным модом, SHA-256 Lua `097b82cadc3fdfc4670173c909bd0fa9681ee9937b5d02b2022cd36a0ac5bc9b`. Lua 5.4 syntax и узкий mock регистрации PASS. Принятый боевой кандидат остаётся установленным рядом.
 
+#### Lifecycle 01 — первый игровой журнал и dev-кандидат
+
+Закрытый журнал SHA-256 `c77776c32b17f62868e06610dae6f23568e6c31e09c402a5d5dfa0b537a2525d`:
+
+- Холодный вход: Astral, Fire bolt и Fire child готовы до появления Хильды. `load_main → execute_load →` живой pawn с `hilda_AnimBP_C`.
+- Ручная загрузка: тот же набор сигналов и новый pawn/world. Смерть: конкретный `MainGameInstance_BP_C:EventCharacterDead`, HP перестал быть положительным, pawn исчез, вернулся новый живой pawn/world. В интервале смерти нет `execute_load` и `ReviveEvent`.
+- Ещё одна замена pawn/world произошла без обоих reset-сигналов. Владелец сообщил о переходе и телепорте. Отдельный вызов `Interact_Transport` в журнале отсутствует, поэтому точную привязку каждого игрового перехода к строкам не утверждаем.
+
+**READY для dev-кандидата:** один game-thread worker ждёт готового Hilda/world/HP/anim и запускает боевые хуки автоматически. Перепривязка переносит целочисленный остаток и очищает старые combo, parent/source и rest-данные. Для сброса используется точный player death event либо успешный bool из post `ExecuteNotifyLoadGameData` с последующей сменой контекста. Обёртка post в [исходнике UE4SS 83330635](https://github.com/UE4SS-RE/RE-UE4SS/blob/83330635/UE4SS/src/Mod/LuaMod.cpp#L289-L377) передаёт оригинальный результат вторым аргументом. Первое наблюдение установило вызов функции, а проверка значения bool на установленном dev-кандидате входит в smoke. F7 останавливает worker, HUD и хуки. Lua-моки покрывают автозапуск, false load, перенос 0.5, успешный load, death и остановку.
+
+Игровой smoke кандидата: загрузка с Fire без F3 и первый обычный выстрел; оставить 0.5 и перейти/телепортироваться, сохранив 0.5; отдельно из неполного резерва загрузить сохранение и возродиться после смерти, ожидая 10/10 в обоих случаях. Завершить F7 и закрыть игру для сверки событий готовности и точных hook IDs.
+
 1. Актуальные NikichMods/DevRules: WORKING_RULES.md, ENGINEERING_RULES.md, GIT_WORKFLOW.md, CODEX_WORKFLOW.md; RUNTIME_INTEGRATION.md и RUNTIME_TEST_HARNESS.md — по факту выбранной техники.
 2. Локальные AGENTS.md, REQUIREMENTS.md, STATUS.md; принятые технические документы [STATIC_COMBAT_RESEARCH_01](STATIC_COMBAT_RESEARCH_01.md), [STAFF_ELEMENTAL_COVERAGE_01](STAFF_ELEMENTAL_COVERAGE_01.md), [ASTRAL_NATIVE_HP_PATH](ASTRAL_NATIVE_HP_PATH.md), [COMBAT_OBSERVATION_01](COMBAT_OBSERVATION_01.md).
 3. Общий NikichMods/Asterigos-Research — только относящиеся к вопросу проверенные данные. Не повторять уже закрытые прогоны и не превращать старые требования в обязательный gate.

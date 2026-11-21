@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MPL-2.0
--- Dev candidate, not production. F3=start, F7=stop. Astral/Fire/Thunder/Ice basic staff attacks.
+-- Dev candidate, not production. Automatic startup; F7 stops until game exit.
 local prefix = "STAFF_RESERVE01"
 local assets = "/Game/MainContent/Act/Skill_BP/PlayerSkill_BP/"
 local astral = assets .. "hilda_staff_bolt_astral.hilda_staff_bolt_astral_C"
@@ -61,6 +61,8 @@ local mobHit = root .. "BaseAICharacter_Mob_BP.BaseAICharacter_Mob_BP_C:Projecti
 local conduit = "/Game/MainContent/Act/Scene_BP/BaseScene_BP/BaseSavePoint_BP.BaseSavePoint_BP_C:"
 local recovery = root .. "MainGameInstance_BP.MainGameInstance_BP_C:RecoverPlayerAndScene"
 local recoveryContext = root .. "GameGlobalBlueprintLibrary.GameGlobalBlueprintLibrary_C:RecoverPlayerAndScene"
+local deathEvent = root .. "MainGameInstance_BP.MainGameInstance_BP_C:EventCharacterDead"
+local executeLoad = "/Script/Genesis.GameGlobal:ExecuteNotifyLoadGameData"
 local GLOBAL = "/Script/Genesis.Default__GameGlobal"
 local animSkill = "/Script/Genesis.BaseCharacterAnimInstance:"
 local capacity = 20 -- ten full charges stored as integer HALF-units
@@ -71,6 +73,7 @@ local diagnosticCapacity = 50 -- log-only, counts eligible unique contacts indep
 local meleeTraceSeconds, meleeTraceLimit = 90, 24 -- HUD 01 investigation only
 local hooks = {}
 local session, closed
+local lifecycleWorker, startupProblem
 local hudDisplay
 
 local function log(event, detail)
@@ -78,7 +81,7 @@ local function log(event, detail)
 end
 
 local function valid(object)
-    return object ~= nil and object:IsValid()
+    return object and object:IsValid()
 end
 
 local function id(object)
@@ -149,7 +152,7 @@ do
     local loaded,factory=pcall(require,"StaffReserveHud")
     if loaded and type(factory)=="function" then
         local ok,display=pcall(factory,
-            function() return session and session.reserve, capacity, session and session.player end,
+            function() return session and session.reserve, capacity, session and session.ready and session.player end,
             function(event,detail) log("HUD_"..event,detail) end)
         if ok and type(display)=="table" then hudDisplay=display end
     end
@@ -192,11 +195,19 @@ local function player()
     if not valid(pawn) or pawn:GetClass():GetFName():ToString() ~= "hilda_BP_C" then
         return nil, "missing_hilda"
     end
-    return pawn
+    return pawn, cdo
+end
+local function cancelLifecycle()
+    if not lifecycleWorker then return end
+    local handle = lifecycleWorker
+    lifecycleWorker = nil
+    local ok, removed = pcall(CancelDelayedAction, handle)
+    if not ok or removed ~= true then log("LIFECYCLE_CANCEL_PENDING", "worker_inert=true") end
 end
 local function fail(reason)
     if hudDisplay then pcall(hudDisplay.stop) end
     session, closed = nil, true
+    cancelLifecycle()
     log("FAILED", "reason=" .. tostring(reason):sub(1, 200) .. " action=F7_then_exit")
 end
 
@@ -214,25 +225,28 @@ end
 
 local function guarded(callback)
     return function(...)
-        if not session then return end
+        if not session or not session.ready then return end
         local ok, err = pcall(function(...)
             assert(IsInGameThread(), "not_game_thread")
             local pawn = player()
-            assert(pawn and id(pawn) == session.player, "player_changed")
+            if not pawn or id(pawn) ~= session.player then return end
+            local world = pawn:GetWorld()
+            if not valid(world) or id(world) ~= session.world then return end
             callback(pawn, ...)
         end, ...)
         if not ok then fail(err) end
     end
 end
 
-local function attach(path, callback)
-    local a, b = RegisterHook(path, guarded(callback))
+local function attach(path, callback, lifecycle)
+    local a, b = RegisterHook(path, lifecycle and callback or guarded(callback))
     hooks[#hooks + 1] = {path = path, a = a, b = b}
     assert(type(a) == "number" and a > 0 and a == b, "unexpected_hook_ids:" .. path)
 end
 
-local function attachNative(path, pre, post)
-    local a, b = RegisterHook(path, guarded(pre), guarded(post))
+local function attachNative(path, pre, post, lifecycle)
+    local a, b = RegisterHook(path, lifecycle and pre or guarded(pre),
+        lifecycle and post or guarded(post))
     hooks[#hooks + 1] = {path = path, a = a, b = b}
     assert(math.type(a) == "integer" and math.type(b) == "integer"
         and a > 0 and b > 0 and a ~= b, "unexpected_native_hook_ids:" .. path)
@@ -880,7 +894,43 @@ local function confirmRest(_, _context, worldContext)
     log("REST", "before=" .. before .. " reserve=" .. session.reserve .. " conduit=" .. pending.conduit)
 end
 
-local function start()
+local function unavailable(reason)
+    if startupProblem ~= reason then
+        startupProblem = reason
+        log("UNAVAILABLE", reason)
+    end
+end
+
+local function resetAfter(reason)
+    session.ready = false
+    session.resetReason = reason
+    session.rest = nil
+    log("LIFECYCLE_WAIT", "reason=" .. reason .. " reserve=" .. session.reserve)
+end
+
+local function afterLoad(_, result)
+    if not session then return end
+    local ok, failure = pcall(function()
+        assert(IsInGameThread(), "not_game_thread")
+        local succeeded = result
+        if type(result) == "userdata" or type(result) == "table" then succeeded = result:get() end
+        assert(type(succeeded) == "boolean", "invalid_load_result")
+        if succeeded then resetAfter("save_load") end
+    end)
+    if not ok then fail(failure) end
+end
+
+local function afterDeath(_, character)
+    if not session then return end
+    local ok, failure = pcall(function()
+        assert(IsInGameThread(), "not_game_thread")
+        local dead = character:get()
+        if valid(dead) and id(dead) == session.player then resetAfter("death") end
+    end)
+    if not ok then fail(failure) end
+end
+
+local function start(pawn, animation, world)
     if closed or session then return end
     for _, spec in ipairs({
         {"/Script/Genesis.GameGlobal:GetPlayerCharacter", true, true, "ObjectProperty:ReturnValue"},
@@ -888,21 +938,11 @@ local function start()
         {"/Script/Genesis.BaseProjectile:GetCharacterOwner", true, false, "ObjectProperty:ReturnValue"},
         {animSkill .. "BeginDoSkill", true, false, ""},
         {animSkill .. "EndDoSkill", true, false, ""},
+        {executeLoad, true, true, "BoolProperty:ReturnValue"},
+        {deathEvent, false, false, "ObjectProperty:character"},
     }) do
         local ok, reason = check(table.unpack(spec))
-        if not ok then log("UNAVAILABLE", reason); return end
-    end
-    local pawn, problem = player()
-    if not pawn then log("UNAVAILABLE", problem); return end
-    local mesh = pawn.Mesh
-    if not valid(mesh) or not valid(mesh:GetOwner()) or id(mesh:GetOwner()) ~= id(pawn) then
-        log("UNAVAILABLE", "invalid_hilda_mesh")
-        return
-    end
-    local anim = mesh:GetAnimInstance()
-    if not valid(anim) or not anim:GetClass():GetFullName():match("%.hilda_AnimBP_C$") then
-        log("UNAVAILABLE", "invalid_hilda_anim")
-        return
+        if not ok then unavailable(reason); return end
     end
     local routes = {
         {astral .. ":ReceiveBeginPlay", "", astralBegin},
@@ -915,7 +955,7 @@ local function start()
     }
     for _, route in ipairs(routes) do
         local ok, reason = check(route[1], false, route[4] == true, route[2], route[5])
-        if not ok then log("UNAVAILABLE", reason); return end
+        if not ok then unavailable(reason); return end
     end
     -- Fire classes can remain unloaded until the first Fire shot.
     -- Treat Fire hooks as one optional pair: never block proven Astral on their absence.
@@ -972,13 +1012,15 @@ local function start()
         for _, route in ipairs(routes) do attach(route[1], route[3]) end
         attachNative(animSkill .. "BeginDoSkill", function() end, comboBegin)
         attachNative(animSkill .. "EndDoSkill", comboEnd, function() end)
+        attachNative(executeLoad, function() end, afterLoad, true)
+        attach(deathEvent, afterDeath, true)
     end)
     if not ok then
         fail(err)
         cleanup()
         return
     end
-    session = {player = id(pawn), anim = id(anim), reserve = capacity,
+    session = {player = id(pawn), anim = id(animation), world = id(world), ready = true, reserve = capacity,
         shots = {}, fireParents = {}, iceParents = {}, contacts = {}, skippedSkills = {},
         diagnostic = {total = 0, byWeapon = {}},
         meleeTrace = {remaining = meleeTraceLimit, deadline = os.time() + meleeTraceSeconds}}
@@ -991,6 +1033,40 @@ local function start()
         local ok,reason=pcall(hudDisplay.start)
         if not ok then log("HUD_ERROR","start="..tostring(reason):sub(1,160));hudDisplay=nil end
     end
+end
+
+local function reconcile()
+    local pawn, global = player()
+    local world = pawn and pawn:GetWorld()
+    local mesh = pawn and pawn.Mesh
+    local owner = valid(mesh) and mesh:GetOwner()
+    local animation = valid(owner) and id(owner) == id(pawn) and mesh:GetAnimInstance()
+    local hp = pawn and global:GetHP(pawn)
+    if not valid(world) or not valid(animation)
+        or not animation:GetClass():GetFullName():match("%.hilda_AnimBP_C$")
+        or not finite(hp) or hp <= 0 then
+        if session then
+            session.ready = false
+            if session.resetReason == "death" and finite(hp) and hp <= 0 then session.deadSeen = true end
+        end
+        return
+    end
+    if not session then
+        start(pawn, animation, world)
+        return
+    end
+    local playerId, animId, worldId = id(pawn), id(animation), id(world)
+    local changed = playerId ~= session.player or worldId ~= session.world
+    if session.resetReason and not changed and not session.deadSeen then return end
+    if session.ready and not changed and animId == session.anim then return end
+
+    local reason = session.resetReason
+    session.player, session.anim, session.world = playerId, animId, worldId
+    session.shots, session.fireParents, session.iceParents, session.contacts = {}, {}, {}, {}
+    session.combo, session.rest, session.resetReason, session.deadSeen = nil, nil, nil, nil
+    if reason then setReserve(capacity) end
+    session.ready = true
+    log("LIFECYCLE_READY", "reason=" .. (reason or "context") .. " reserve=" .. session.reserve)
 end
 
 local function stop()
@@ -1009,6 +1085,7 @@ local function stop()
         if not ok then log("HUD_ERROR","stop="..tostring(reason):sub(1,160)) end
     end
     session, closed = nil, true
+    cancelLifecycle()
     cleanup()
     log("STOP", "reserve=" .. reserve .. " hooks_remaining=" .. #hooks)
 end
@@ -1029,14 +1106,12 @@ end
 local ok, err = pcall(function()
     assert(EngineTickAvailable == true and type(EGameThreadMethod.EngineTick) == "number", "no_engine_tick")
     for _, name in ipairs({"RegisterHook", "UnregisterHook", "StaticFindObject",
-        "RegisterKeyBind", "IsKeyBindRegistered", "ExecuteInGameThread", "IsInGameThread"}) do
+        "RegisterKeyBind", "IsKeyBindRegistered", "ExecuteInGameThread", "IsInGameThread",
+        "LoopInGameThreadWithDelay", "CancelDelayedAction"}) do
         assert(type(_G[name]) == "function", "missing_api:" .. name)
     end
-    for _, key in ipairs({Key.F3, Key.F7}) do
-        assert(not IsKeyBindRegistered(key), "key_collision")
-    end
+    assert(not IsKeyBindRegistered(Key.F7), "key_collision")
     bind(Key.F7, stop)
-    bind(Key.F3, start)
     local fadeReady = pcall(function()
         assert(Key.F4 and not IsKeyBindRegistered(Key.F4), "fade_key_unavailable")
         bind(Key.F4, function()
@@ -1048,6 +1123,15 @@ local ok, err = pcall(function()
     if not fadeReady then
         log("FIRE_VFX_PROBE", "probe=scale fade_key=unavailable")
     end
+    lifecycleWorker = LoopInGameThreadWithDelay(100, function()
+        if closed then return end
+        local observed, problem = pcall(function()
+            assert(IsInGameThread(), "not_game_thread")
+            reconcile()
+        end)
+        if not observed then fail(problem) end
+    end)
+    assert(math.type(lifecycleWorker) == "integer", "lifecycle_scheduler_handle")
 end)
-if ok then log("LOADED", "F3=start F7=stop astral_fire_basic_shared_reserve=true")
+if ok then log("LOADED", "auto_start=true F7=stop astral_fire_basic_shared_reserve=true")
 else fail(err) end

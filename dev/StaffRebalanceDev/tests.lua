@@ -84,6 +84,9 @@ local function setup(options)
     e._G = e
     e.os = {time = function() return options.now or 100 end}
     local keys, hooks, lines, functions = {}, {}, {}, {}
+    local tick
+    local schedulerActive = false
+    local world = object("World", 85)
     local pawn = object("Hilda", 1, "hilda_BP_C", "/Game/Test/hilda_BP.hilda_BP_C")
     local anim = object("HildaAnim", 3, nil, "/Game/MainContent/Assets/creature/01_character/hilda/hilda_AnimBP.hilda_AnimBP_C")
     anim.doing = "None"
@@ -92,9 +95,11 @@ local function setup(options)
     mesh.GetOwner = function() return pawn end
     mesh.GetAnimInstance = function() return anim end
     pawn.Mesh = mesh
+    pawn.GetWorld = function() return world end
     local cdo = object("GameGlobal", 2, nil, nil, "GameGlobal " .. global)
     functions[global] = cdo
-    cdo.GetPlayerCharacter = function() return pawn end
+    cdo.GetPlayerCharacter = function() if not options.noPawn then return pawn end end
+    cdo.GetHP = function() return options.hp or 100 end
     cdo.GetDoingSkill = function() return {ToString = function() return options.skill or "hilda_staff_atk1" end} end
     local function property(name, offset)
         return {GetFullName = function() return name end, GetOffset_Internal = function() return offset end}
@@ -134,6 +139,8 @@ local function setup(options)
         reflected(fireSphereBegin, 0)
         if options.blastReady then reflected(fireBlastBegin, 0) end
     end
+    reflected("/Script/Genesis.GameGlobal:ExecuteNotifyLoadGameData", 0x2400, {property("BoolProperty Owner:ReturnValue")})
+    reflected(root .. "MainGameInstance_BP.MainGameInstance_BP_C:EventCharacterDead", 0, {property("ObjectProperty Owner:character")})
     reflected(nativeBegin, 0x400)
     reflected(nativeEnd, 0x400)
     reflected(hit, 0, {
@@ -153,10 +160,16 @@ local function setup(options)
     e.Key = {F3 = 3, F4 = 4, F7 = 7}
     e.EFindName = {FNAME_Find = 0}
     e.FName = function(value) return {ToString = function() return value end} end
-    e.IsKeyBindRegistered = function(key) return options.collision and key == 3 or false end
+    e.IsKeyBindRegistered = function(key) return options.collision and key == 7 or false end
     e.RegisterKeyBind = function(key, callback) keys[key] = callback end
     e.ExecuteInGameThread = function(callback, method) assert(method == 1); callback() end
     e.IsInGameThread = function() return not options.wrongThread end
+    e.LoopInGameThreadWithDelay = function(delay, callback)
+        assert(delay == 100); tick = callback; schedulerActive = true; return 42
+    end
+    e.CancelDelayedAction = function(handle)
+        assert(handle == 42); schedulerActive = false; return true
+    end
     e.RegisterHook = function(name, callback, post)
         if options.registrationError and name == hit then error("registration failed") end
         hooks[name] = {pre = post and callback or nil, post = post or callback}
@@ -278,6 +291,13 @@ local function setup(options)
     assert(load(options.phaseOne and candidateSource or legacySource, "@" .. path, "t", e))()
     return {
         keys = keys,
+        tick = function() if schedulerActive then tick() end end,
+        staleTick = function() tick() end,
+        setPawnAvailable = function(value) options.noPawn = not value end,
+        setWorld = function(address) world = object("World", address) end,
+        setHP = function(value) options.hp = value end,
+        die = function() hooks[root .. "MainGameInstance_BP.MainGameInstance_BP_C:EventCharacterDead"].post(nil, parameter(pawn)) end,
+        loadResult = function(value) hooks["/Script/Genesis.GameGlobal:ExecuteNotifyLoadGameData"].post(nil, parameter(value)) end,
         hooks = hooks,
         hudEvents = hudEvents,
         has = function(fragment) return table.concat(lines):find(fragment, 1, true) end,
@@ -353,10 +373,49 @@ local function contact(test, blade, enemy)
     test.emit(hit, enemy, parameter(blade), nil, nil, parameter(0))
 end
 
+do
+    local t = setup({phaseOne = true, noPawn = true})
+    assert(not t.keys[3])
+    t.tick()
+    assert(not next(t.hooks) and not t.has("START"))
+    t.setPawnAvailable(true)
+    t.tick()
+    assert(t.has("START reserve=20 half_units=true") and t.hudEvents[1] == "start")
+    for i = 1, 10 do shot(t, "LifecycleDrain" .. i) end
+    contact(t, t.blade("LifecycleHalf"), target)
+    assert(t.has("credit_units=1"))
+    t.loadResult(false)
+    t.emit(conduit .. "Interact_Transport", point)
+    t.setPawnAvailable(false)
+    t.tick()
+    t.setWorld(86)
+    t.setPawnAvailable(true)
+    t.tick()
+    assert(t.has("LIFECYCLE_READY reason=context reserve=1"))
+
+    t.loadResult(true)
+    t.tick()
+    shot(t, "BeforeLoadedPawn")
+    assert(not t.has("LIFECYCLE_READY reason=save_load"))
+    t.setWorld(87)
+    t.tick()
+    assert(t.has("LIFECYCLE_READY reason=save_load reserve=20"))
+    shot(t, "AfterLoad")
+    t.die()
+    t.setHP(0)
+    t.tick()
+    t.setHP(100)
+    t.tick()
+    assert(t.has("LIFECYCLE_READY reason=death reserve=20") and t.count("START")==1)
+    t.keys[7]()
+    t.staleTick()
+    assert(not next(t.hooks) and t.count("START")==1)
+end
+
 -- Melee Refill 01 — exact real candidate, all values in HALF-units (20 = ten full).
 do
     local t = setup({phaseOne=true})
-    t.keys[3]()
+    t.tick()
     assert(t.has("START reserve=20 half_units=true"))
     for i=1,10 do shot(t,"PhaseOneDrain"..i) end
     assert(t.has("mode=strong before=2 reserve=0"))
@@ -396,7 +455,7 @@ for _,case in ipairs({
     {"sword_shield",2},{"bracelets",2},{"bracelets_3",2},{"bracelets_4",2}
 }) do
     local t=setup({phaseOne=true})
-    t.keys[3]()
+    t.tick()
     for i=1,10 do shot(t,"Drain"..i) end
     local source = case[1]=="daggers_base" and t.blade("Credit")
         or t.melee("Credit",case[1])
@@ -419,7 +478,7 @@ end
 -- Cap near 20, multi-target credit and no double grant from same source-target.
 do
     local t=setup({phaseOne=true})
-    t.keys[3]()
+    t.tick()
     shot(t,"To18")
     contact(t,t.blade("To19"),target)
     assert(t.has("MELEE before=18 reserve=19"))
@@ -440,7 +499,7 @@ end
 -- One remaining half-unit is never sufficient in other basic elements.
 for _,element in ipairs({"fire","ice","thunder"}) do
     local t=setup({phaseOne=true})
-    t.keys[3]()
+    t.tick()
     for i=1,10 do shot(t,"Exhaust"..i) end
     contact(t,t.blade("LoneHalf"),target)
     assert(t.has("MELEE before=0 reserve=1"))
@@ -473,7 +532,7 @@ end
 -- HUD 01 research trace samples the callback before the melee guards.
 do
     local t = setup()
-    t.keys[3]()
+    t.tick()
     contact(t, t.bolt("Staff"), target)
     assert(t.count("MELEE_TRACE") == 0)
     t.setSkill("hilda_dual_atk1")
@@ -492,7 +551,7 @@ do
     assert(not next(t.hooks))
 
     t = setup()
-    t.keys[3]()
+    t.tick()
     local blade = t.blade("Trace read failure")
     local owner = blade.GetCharacterOwner()
     local getOwnerClass = owner.GetClass
@@ -511,8 +570,8 @@ end
 for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     local t = setup({skill = skill})
     assert(not next(t.hooks))
-    t.keys[3]()
-    assert(t.has("START reserve=3 hooks=14") and t.has("diag_total=0 diag_capacity=50"))
+    t.tick()
+    assert(t.has("START reserve=3 hooks=16") and t.has("diag_total=0 diag_capacity=50"))
     assert(t.count("SHOT") == 0)
     assert(shot(t, "One").rate == 0.875 and t.count("SHOT") == 1)
     assert(shot(t, "Two").rate == 0.875 and shot(t, "Three").rate == 0.875)
@@ -555,7 +614,7 @@ for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     contact(t, t.blade("Fourth"), target)
     assert(t.has("MELEE before=2 reserve=3") and t.has("MELEE before=3 reserve=3"))
     t.keys[7](); assert(not next(t.hooks) and t.has("STOP reserve=3 hooks_remaining=0"))
-    t.keys[3](); assert(not next(t.hooks))
+    t.tick(); assert(not next(t.hooks))
 end
 
 -- Live-confirmed first melee classes and statically mapped combo class/row pairs.
@@ -567,7 +626,7 @@ for _, case in ipairs({
 }) do
     local kind, expectedWeapon = case[1], case[2]
     local t = setup({skill = "hilda_staff_atk1"})
-    t.keys[3]()
+    t.tick()
     for i = 1, 3 do shot(t, kind .. "Drain" .. i) end
     assert(t.has("mode=strong before=1 reserve=0"))
     local first = t.melee(kind .. "First", kind)
@@ -610,7 +669,7 @@ for _, case in ipairs({
         local row = astralRow:gsub("_astral$", "_" .. element)
         assert(row ~= astralRow and row:sub(-#element) == element)
         local t = setup({skill = "hilda_staff_atk1"})
-        t.keys[3]()
+        t.tick()
         for i = 1, 3 do shot(t, kind .. element .. "Drain" .. i) end
         assert(t.has("mode=strong before=1 reserve=0"))
         local first = t.melee(kind .. element .. "First", kind, nil, row)
@@ -655,7 +714,7 @@ end
 -- reaches 50 and remains capped without requiring staff shots between melee hits.
 do
     local t = setup({skill = "hilda_staff_atk1"})
-    t.keys[3]()
+    t.tick()
     for i = 1, 51 do
         contact(t, t.melee("Audit" .. i, "bracelets_4"), target)
     end
@@ -667,7 +726,7 @@ end
 
 do
     local t = setup({skill = "hilda_staff_atk2"})
-    t.keys[3]()
+    t.tick()
     assert(shot(t, "No native Begin").rate == 0.875)
     assert(t.count("SHOT") == 0 and t.has("SKIP reason=unverified_combo_boundary"))
     t.setSkill("hilda_staff_atk1")
@@ -677,7 +736,7 @@ do
 end
 do
     local t = setup({saved = 1})
-    t.keys[3]()
+    t.tick()
     assert(shot(t, "e804").rate == 0.875)
     assert(t.count("SHOT") == 0 and t.has("SKIP reason=unverified_e804"))
     t.setSaved(0)
@@ -688,7 +747,7 @@ end
 
 for _, skill in ipairs({"hilda_staff_atk1", "hilda_staff_atk1_idle"}) do
     local t = setup({skill = skill})
-    t.keys[3]()
+    t.tick()
     local first = t.bolt("First")
     t.emit(begin, parameter(first))
     assert(first.rate == 0.875 and t.has("skill=" .. skill .. " mode=strong before=3 reserve=2"))
@@ -708,7 +767,7 @@ end
 
 do
     local t = setup({writeError = true})
-    t.keys[3]()
+    t.tick()
     for i = 1, 3 do shot(t, "Strong" .. i) end
     assert(shot(t, "Rollback").rate == 0.875)
     assert(t.count("SHOT") == 3 and t.has("ROLLBACK_OK") and t.has("FAILED"))
@@ -716,7 +775,7 @@ end
 
 for _, options in ipairs({{badShape = true}, {registrationError = true}, {wrongThread = true}}) do
     local t = setup(options)
-    t.keys[3]()
+    t.tick()
     assert(not next(t.hooks) and not t.has("START"))
 end
 do
@@ -726,7 +785,7 @@ end
 -- New dev-only coverage. Historical Reserve Slice 01 remains unchanged.
 do
     local t = setup()
-    t.keys[3]()
+    t.tick()
     -- One earlier first-step bolt leaves exactly one charge.
     shot(t, "FirstOne")
     shot(t, "FirstTwo")
@@ -752,7 +811,7 @@ do
 end
 do
     local t = setup()
-    t.keys[3]()
+    t.tick()
     t.beginStep("hilda_staff_atk2")
     t.endStep() -- No bolt: no debit.
     assert(t.count("SHOT") == 0 and t.has("mode=no_bolt"))
@@ -773,7 +832,7 @@ do
 end
 do
     local t = setup()
-    t.keys[3]()
+    t.tick()
     t.beginStep("hilda_staff_atk2")
     t.setSkill("hilda_staff_atk3")
     assert(shot(t, "Wrong-skill").rate == 0.875 and t.count("SHOT") == 0)
@@ -794,8 +853,8 @@ end
 -- a newer weak action. Readiness/guard failures never change Fire damage.
 do
     local s = setup({blastReady = true})
-    s.keys[3]()
-    assert(s.hooks[fireBlastBegin] and s.has("START reserve=3 hooks=15"))
+    s.tick()
+    assert(s.hooks[fireBlastBegin] and s.has("START reserve=3 hooks=17"))
     local strong = {}
     for i = 1, 3 do
         s.beginStep("hilda_staff_atk" .. i .. "_fire")
@@ -836,7 +895,7 @@ do
 end
 do
     local s = setup({blastReady = true, blastWriteError = true})
-    s.keys[3]()
+    s.tick()
     for i = 1, 3 do
         s.beginStep("hilda_staff_atk1_fire")
         s.emit(fireBegin, parameter(s.fireBolt("BlankStrong" .. i)))
@@ -862,9 +921,9 @@ do
 end
 do
     local s = setup({blastReady = false})
-    s.keys[3]()
+    s.tick()
     assert(not s.hooks[fireBlastBegin] and s.has("FIRE_BLAST_UNAVAILABLE"))
-    assert(s.has("START reserve=3 hooks=14 fire=ready"))
+    assert(s.has("START reserve=3 hooks=16 fire=ready"))
     s.keys[7]()
 end
 
@@ -882,7 +941,7 @@ do
     end
 
     local function emptyReserve(t)
-        t.keys[3]()
+        t.tick()
         local lastStrong
         for i = 1, 3 do
             local bolt, particle = fire(t, "VfxStrong" .. i, function(b)
@@ -952,9 +1011,9 @@ end
 
 do
     local t = setup({missingFire = true})
-    t.keys[3]()
+    t.tick()
     assert(t.has("FIRE_UNAVAILABLE reason=missing:"))
-    assert(t.has("START reserve=3 hooks=12 fire=unavailable thunder=ready ice=ready"))
+    assert(t.has("START reserve=3 hooks=14 fire=unavailable thunder=ready ice=ready"))
     assert(shot(t, "AstralWithFireClassUnloaded").rate == 0.875)
     assert(t.has("mode=strong before=3 reserve=2"))
     t.keys[7]()
@@ -962,7 +1021,7 @@ do
 end
 do
     local t = setup()
-    t.keys[3]()
+    t.tick()
     local skills = {"hilda_staff_atk1_idle_fire", "hilda_staff_atk2_fire", "hilda_staff_atk3_fire"}
     local bolts = {}
     for i, skill in ipairs(skills) do
@@ -1015,7 +1074,7 @@ do
 end
 do
     local t = setup()
-    t.keys[3]()
+    t.tick()
     local b = t.fireBolt("NoBoundary")
     t.setSkill("hilda_staff_atk2_fire")
     t.emit(fireBegin, parameter(b))
@@ -1052,7 +1111,7 @@ do
 end
 do
     local t = setup()
-    t.keys[3]()
+    t.tick()
     for i=1,3 do
         t.beginStep("hilda_staff_atk1_fire")
         t.emit(fireBegin, parameter(t.fireBolt("DrainFire" .. i)))
@@ -1071,16 +1130,16 @@ end
 -- sequence, common mode, owner/row/special rejection and unload fallback.
 do
     local s = setup({missingThunder = true})
-    s.keys[3]()
+    s.tick()
     assert(s.has("THUNDER_UNAVAILABLE reason=missing:")
-        and s.has("START reserve=3 hooks=13 fire=ready thunder=unavailable ice=ready"))
+        and s.has("START reserve=3 hooks=15 fire=ready thunder=unavailable ice=ready"))
     assert(shot(s, "NoThunderYet").rate == 0.875)
     s.keys[7]()
     assert(not next(s.hooks))
 end
 do
     local s = setup()
-    s.keys[3]()
+    s.tick()
     for step, amount in ipairs({1, 2, 3}) do
         local skill = "hilda_staff_atk" .. step .. "_thunder"
         s.beginStep(skill)
@@ -1111,7 +1170,7 @@ do
 end
 do
     local s = setup()
-    s.keys[3]()
+    s.tick()
     s.setSkill("hilda_staff_atk2_thunder")
     s.emit(thunderBegin, parameter(s.thunderBolt("NoBoundary")))
     assert(s.count("THUNDER_BOLT") == 0 and s.has("reason=unverified_thunder_action"))
@@ -1142,8 +1201,8 @@ end
 -- mode. VFX and Fourth share the sphere_150 class but must not be modified.
 do
     local s = setup({missingIcePulse = true})
-    s.keys[3]()
-    assert(s.has("ICE_UNAVAILABLE reason=missing:") and s.has("START reserve=3 hooks=12")
+    s.tick()
+    assert(s.has("ICE_UNAVAILABLE reason=missing:") and s.has("START reserve=3 hooks=14")
         and s.has("ice=unavailable"))
     assert(shot(s, "AstralWhenIceMissing").rate == 0.875)
     assert(s.hooks[iceBegin] == nil and s.hooks[icePulseBegin] == nil)
@@ -1152,14 +1211,14 @@ do
 end
 do
     local s = setup({missingIceBolt = true})
-    s.keys[3]()
+    s.tick()
     assert(s.hooks[iceBegin] == nil and s.hooks[icePulseBegin] == nil)
     assert(s.has("ICE_UNAVAILABLE reason=missing:"))
     s.keys[7]()
 end
 do
     local s = setup()
-    s.keys[3]()
+    s.tick()
     local parents = {}
     for i, skill in ipairs({"hilda_staff_atk1_idle_ice", "hilda_staff_atk2_ice", "hilda_staff_atk3_ice"}) do
         s.beginStep(skill)
@@ -1226,7 +1285,7 @@ end
 -- and propagates strong/weak into real positive-rate damage pulses.
 do
     local s = setup()
-    s.keys[3]()
+    s.tick()
     local first
     for i=1,3 do
         s.beginStep("hilda_staff_atk1_ice")
@@ -1252,7 +1311,7 @@ do
 end
 do
     local s = setup()
-    s.keys[3]()
+    s.tick()
     s.setSkill("hilda_staff_atk2_ice")
     local unrelated = s.iceBolt("OutsideBoundary")
     s.emit(iceBegin, parameter(unrelated))
@@ -1290,7 +1349,7 @@ end
 -- melee, duplicates or a rest with unchanged full reserve.
 do
     local s=setup()
-    s.keys[3]()
+    s.tick()
     assert(s.hudEvents[1]=="start")
     shot(s,"Hud1");shot(s,"Hud2");shot(s,"Hud3")
     assert(s.hudEvents[2]=="3>2" and s.hudEvents[3]=="2>1"
